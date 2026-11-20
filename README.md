@@ -28,7 +28,7 @@ machine, with your model. One Node.js process serves a web app you can install o
 - Knows when to stay quiet: a do-not-disturb window means no "all clear" check-ins with nothing to act on.
 
 **Gets things done**
-- Drives a real browser through the Chrome DevTools / Playwright MCP servers — e.g. "unsubscribe me from these promos".
+- Drives a real browser through Microsoft's Playwright MCP server — e.g. "unsubscribe me from these promos".
 - Runs Python, reads and writes files, searches the web, schedules recurring routines and watches pages / feeds.
 - Every side effect (sending email, running code, external tools…) goes through **Sentinel**, an out-of-band approval gate.
 
@@ -50,7 +50,7 @@ machine, with your model. One Node.js process serves a web app you can install o
 **Built for local models**
 - Prompts are kept byte-stable between turns *and across chats* (static system prompt + tools first, per-chat
   state after) so the model server's prefix cache hits; the `toks` plugin shows tok/s and cache-hit % under every reply.
-- Big MCP tool sets (e.g. Chrome DevTools, ~9k tokens) load on demand without changing the tool list, so opening the
+- Big MCP tool sets (e.g. the browser, ~5k tokens) load on demand without changing the tool list, so opening the
   browser deep into a long chat never forces a full re-prefill. Email text sent to the model has tracking links shortened.
 - Replies keep running on the server when you switch chats, close the tab or lose signal — reopen and it picks up live.
 - Works with Ollama, LM Studio, vLLM, SGLang, llama.cpp — or OpenAI, OpenRouter, DeepSeek and any OpenAI-compatible API.

@@ -3,11 +3,12 @@
 //   node scripts/setup.mjs                 interactive (auto-detects local servers)
 //   node scripts/setup.mjs --yes           non-interactive: just make sure .env exists
 //   node scripts/setup.mjs --base-url http://localhost:11434/v1 --model llama3.1 [--api-key KEY] [--location "Tokyo"]
-import { readFileSync, writeFileSync, existsSync, copyFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, copyFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { migrateBrowserServers, isPlaywrightEntry, playwrightEntry, playwrightBrowser, installBrowserCommand, PLAYWRIGHT_PKG } from '../lib/browser-setup.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ENV = path.join(ROOT, '.env');
@@ -118,9 +119,43 @@ async function ensurePython() {
   return true;
 }
 
+// ---------- Browser automation (optional): Playwright MCP, loaded on demand ----------
+const DATA_DIR = process.env.OPEN_DOTS_DATA_DIR ? path.resolve(process.env.OPEN_DOTS_DATA_DIR) : path.join(ROOT, 'data');
+const MCP_FILE = path.join(DATA_DIR, 'mcp.json');
+function readMcp() { try { const j = JSON.parse(readFileSync(MCP_FILE, 'utf8')); return Array.isArray(j) ? j : []; } catch { return []; } }
+function saveMcp(list) { mkdirSync(DATA_DIR, { recursive: true }); writeFileSync(MCP_FILE, JSON.stringify(list, null, 2)); }
+const npx = (args, opts = {}) => spawnSync(process.platform === 'win32' ? 'npx.cmd' : 'npx', args, { windowsHide: true, shell: process.platform === 'win32', ...opts });
+async function ensureBrowser({ canAsk }) {
+  let list = readMcp();
+  const migrated = migrateBrowserServers(list);
+  if (migrated) { list = migrated; saveMcp(list); console.log(C.d('Switched browser tools from Chrome DevTools to Playwright.')); }
+  if (!list.some(isPlaywrightEntry)) {
+    if (!canAsk) { console.log(C.d('Browser automation is off. Turn it on later: Agent Hub → MCP & API → Browser (Playwright).')); return; }
+    console.log(`\nPond can use a real browser for web tasks: unsubscribe from mail, fill forms, read sites that need JavaScript or a login.`);
+    if ((await ask('Turn on browser automation (Playwright)? (Y/n)', 'Y')).toLowerCase() === 'n') {
+      console.log(C.d('  Skipped. Turn it on later: Agent Hub → MCP & API → Browser (Playwright).'));
+      return;
+    }
+    list.push(playwrightEntry());
+    saveMcp(list);
+  }
+  const browser = playwrightBrowser();
+  process.stdout.write(C.d('Downloading the browser tools (one-time)… '));
+  const warm = npx(['-y', PLAYWRIGHT_PKG, '--version'], { encoding: 'utf8', timeout: 180000 });
+  console.log(warm.status === 0 ? C.g('done') : C.y('skipped (Pond will fetch them when first needed)'));
+  if (browser.needsDownload) {
+    console.log(C.d(`No Chrome found — downloading ${browser.label} for Pond (one-time, ~150 MB)…`));
+    const [cmd, cargs] = installBrowserCommand();
+    const r = npx(cargs, { stdio: 'inherit', timeout: 600000 });
+    if (r.status !== 0) console.log(C.y(`  Couldn't download it now. Retry later: ${[cmd, ...cargs].join(' ')}`));
+  }
+  console.log(`${C.g('✓')} Browser automation on (${browser.label}) — Pond loads it only when a task needs a browser.`);
+}
+
 if (!interactive) {
   if (!args['base-url']) console.log(C.d('Skipping interactive setup (no terminal). Edit .env or use Agent Hub → LLM Engine later.'));
   await ensurePython();
+  await ensureBrowser({ canAsk: false });
   process.exit(0);
 }
 
@@ -162,7 +197,7 @@ const isCloud = (u) => { try { return CLOUD.test(new URL(u).hostname); } catch {
 const hasKey = curKey && !curKey.startsWith('sk-your');
 if (curBase && curModel && (hasKey || !isCloud(curBase))) {
   const keep = (await ask(`Current: ${C.c(curModel)} at ${C.c(curBase)}. Keep it? (Y/n)`, 'Y')).toLowerCase();
-  if (keep !== 'n') { console.log(C.g('✓ Keeping current model settings')); await ensurePython(); process.exit(0); }
+  if (keep !== 'n') { console.log(C.g('✓ Keeping current model settings')); await ensurePython(); await ensureBrowser({ canAsk: true }); process.exit(0); }
 }
 
 process.stdout.write(C.d('Looking for local model servers… '));
@@ -182,7 +217,7 @@ const choices = [
 ];
 choices.forEach((c, i) => console.log(`  ${C.c(String(i + 1))}) ${c.label}`));
 const pick = choices[Math.max(0, Math.min(choices.length - 1, Number(await ask('Choose', '1')) - 1))];
-if (pick.skip) { console.log(C.y('Skipped. Pond will start, but needs a model before it can chat.')); await ensurePython(); process.exit(0); }
+if (pick.skip) { console.log(C.y('Skipped. Pond will start, but needs a model before it can chat.')); await ensurePython(); await ensureBrowser({ canAsk: true }); process.exit(0); }
 
 let baseUrl = pick.baseUrl;
 if (pick.custom) {
@@ -225,3 +260,4 @@ const location = await ask('Your city, for local suggestions (Enter to skip):', 
 applyConfig({ baseUrl, apiKey, model, location });
 console.log(`\n${C.g('✓ Saved to .env')}: ${C.c(model)} at ${C.c(baseUrl)}${location ? ` · ${location}` : ''}`);
 await ensurePython();
+await ensureBrowser({ canAsk: true });

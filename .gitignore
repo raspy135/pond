@@ -9,3 +9,4 @@ data/
 asar-search-files.txt
 test/asar-*
 test/asar-search-files.txt
+.playwright-mcp/
