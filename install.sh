@@ -11,6 +11,8 @@ main() {
   say()  { printf '\033[1;36m[pond]\033[0m %s\n' "$*"; }
   fail() { printf '\033[1;31m[pond]\033[0m %s\n' "$*" >&2; exit 1; }
   node_ok() { command -v node >/dev/null 2>&1 && [ "$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)" -ge 18 ]; }
+  py_ok() { command -v python3 >/dev/null 2>&1 && python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; }
+  venv_ok() { python3 -m venv --help >/dev/null 2>&1 && python3 -c 'import ensurepip' >/dev/null 2>&1; }
 
   # 1) Node.js 18+
   if ! node_ok; then
@@ -27,10 +29,25 @@ main() {
   fi
   say "Using Node $(node -v)"
 
+  # 1b) Python 3.9+ with venv (required: data, spreadsheets, PDFs, scripts)
+  if ! py_ok || { [ "$(uname)" != "Darwin" ] && ! venv_ok; }; then
+    if [ "$(uname)" = "Darwin" ]; then
+      command -v brew >/dev/null 2>&1 && { say "Installing Python with Homebrew…"; brew install python; }
+    elif command -v apt-get >/dev/null 2>&1; then
+      say "Installing Python (asks for your password)…"; sudo apt-get update -qq && sudo apt-get install -y python3 python3-venv python3-pip
+    elif command -v dnf >/dev/null 2>&1; then
+      say "Installing Python (asks for your password)…"; sudo dnf install -y python3 python3-pip
+    elif command -v pacman >/dev/null 2>&1; then
+      say "Installing Python (asks for your password)…"; sudo pacman -S --needed --noconfirm python python-pip
+    fi
+    py_ok || fail "Python 3.9+ is required — install it (https://www.python.org/downloads/) and run this again."
+  fi
+  say "Using $(python3 --version)"
+
   # 2) Download or update Pond (keeps .env and data/)
   if [ -n "${POND_SOURCE_DIR:-}" ]; then
     say "Copying from $POND_SOURCE_DIR…"; mkdir -p "$DIR"
-    (cd "$POND_SOURCE_DIR" && tar --exclude=./data --exclude=./.env --exclude=./.git --exclude=./node_modules --exclude='./.backup*' -cf - .) | (cd "$DIR" && tar -xf -)
+    (cd "$POND_SOURCE_DIR" && tar --exclude=./data --exclude=./.env --exclude=./.git --exclude=./node_modules --exclude=./.venv --exclude='./.backup*' -cf - .) | (cd "$DIR" && tar -xf -)
   elif command -v git >/dev/null 2>&1 && [ -d "$DIR/.git" ]; then
     say "Updating $DIR…"; git -C "$DIR" pull --ff-only
   elif command -v git >/dev/null 2>&1 && [ ! -e "$DIR" ]; then

@@ -11,6 +11,13 @@
   function Say($m)  { Write-Host "[pond] $m" -ForegroundColor Cyan }
   function Fail($m) { Write-Host "[pond] $m" -ForegroundColor Red; throw $m }  # throw (not exit) so `| iex` doesn't close the window
   function NodeOk { try { $v = & node -p "process.versions.node.split('.')[0]" 2>$null; return ([int]$v -ge 18) } catch { return $false } }
+  function PyOk {
+    foreach ($c in @(@('py', '-3'), @('python'))) {
+      try { $v = & $c[0] @($c | Select-Object -Skip 1) -c "import sys; print(sys.version_info[1])" 2>$null
+            if ($LASTEXITCODE -eq 0 -and [int]$v -ge 9) { return $true } } catch { }
+    }
+    return $false
+  }
 
   # 1) Node.js 18+
   if (-not (NodeOk)) {
@@ -23,13 +30,23 @@
   }
   Say "Using Node $(node -v)"
 
+  # 1b) Python 3.9+ (required: data, spreadsheets, PDFs, scripts)
+  if (-not (PyOk)) {
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+      Say 'Installing Python 3.12 with winget...'
+      winget install -e --id Python.Python.3.12 --accept-source-agreements --accept-package-agreements --silent | Out-Host
+      $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+    }
+    if (-not (PyOk)) { Fail 'Python 3.9+ is required - install it from https://www.python.org/downloads/ (tick "Add to PATH") and run this again.' }
+  }
+
   # 2) Download or update Pond (keeps .env and data\)
   $git = Get-Command git -ErrorAction SilentlyContinue
   if ($env:POND_SOURCE_DIR) {
     Say "Copying from $($env:POND_SOURCE_DIR)..."
     New-Item -ItemType Directory -Force -Path $Dir | Out-Null
     Get-ChildItem -LiteralPath $env:POND_SOURCE_DIR -Force |
-      Where-Object { $_.Name -notin @('data', '.env', '.git', 'node_modules') -and $_.Name -notlike '.backup*' } |
+      Where-Object { $_.Name -notin @('data', '.env', '.git', 'node_modules', '.venv') -and $_.Name -notlike '.backup*' } |
       Copy-Item -Destination $Dir -Recurse -Force
   } elseif ($git -and (Test-Path (Join-Path $Dir '.git'))) {
     Say "Updating $Dir..."

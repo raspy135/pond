@@ -69,45 +69,58 @@ if (args['base-url'] || args.model || args['api-key'] || args.location) {
   applyConfig({ baseUrl: args['base-url'], apiKey: args['api-key'] ?? (args['base-url'] ? '' : undefined), model: args.model, location: args.location });
   console.log(C.g('✓ Saved model settings to .env'));
 }
-// ---------- Python (optional, but Pond's most powerful tool) ----------
+// ---------- Python (required): Pond's own environment in .venv with a data toolkit ----------
+const PY_KIT = ['pandas', 'matplotlib', 'openpyxl', 'pypdf'];
+const VENV = path.join(ROOT, '.venv');
+const VENV_PY = process.platform === 'win32' ? path.join(VENV, 'Scripts', 'python.exe') : path.join(VENV, 'bin', 'python');
+function runPy(bin, args, opts = {}) {
+  try { return spawnSync(bin, args, { encoding: 'utf8', timeout: 15000, windowsHide: true, ...opts }); } catch { return { status: -1 }; }
+}
 function findPython() {
   const cands = process.platform === 'win32'
-    ? [['py', ['-3', '--version']], ['python', ['--version']], ['python3', ['--version']]]
-    : [['python3', ['--version']], ['python', ['--version']]];
-  for (const [bin, a] of cands) {
-    try {
-      const r = spawnSync(bin, a, { encoding: 'utf8', timeout: 8000, windowsHide: true });
-      const m = `${r.stdout || ''}${r.stderr || ''}`.match(/Python (3\.\d+(?:\.\d+)?)/);
-      if (r.status === 0 && m) return { bin, version: m[1] }; // the Windows Store "python" stub fails this
-    } catch { /* not installed */ }
+    ? [['py', ['-3']], ['python', []], ['python3', []]]
+    : [['python3', []], ['python', []]];
+  for (const [bin, pre] of cands) {
+    const r = runPy(bin, [...pre, '--version']);
+    const m = `${r.stdout || ''}${r.stderr || ''}`.match(/Python (3\.(\d+)(?:\.\d+)?)/);
+    if (r.status === 0 && m && Number(m[2]) >= 9) return { bin, pre, version: m[1] }; // the Windows Store "python" stub fails this
   }
   return null;
 }
-const hasCmd = (c) => spawnSync(process.platform === 'win32' ? 'where' : 'which', [c], { encoding: 'utf8', windowsHide: true }).status === 0;
-async function checkPython({ interactive: canAsk }) {
+async function ensurePython() {
   const py = findPython();
-  if (py) { console.log(`${C.g('✓')} Python ${py.version} found — Pond can use it to analyze data, read spreadsheets and PDFs, and more.`); return; }
-  console.log(`\n${C.y('Python not found.')} It's optional, but it lets Pond analyze data, read spreadsheets and PDFs, and run small scripts for you.`);
-  let cmd = null;
-  if (process.platform === 'win32' && hasCmd('winget')) cmd = ['winget', ['install', '-e', '--id', 'Python.Python.3.12', '--accept-source-agreements', '--accept-package-agreements']];
-  else if (process.platform === 'darwin' && hasCmd('brew')) cmd = ['brew', ['install', 'python']];
-  if (cmd && canAsk) {
-    const yes = (await ask(`Install Python now with ${cmd[0]}? (Y/n)`, 'Y')).toLowerCase() !== 'n';
-    if (yes) {
-      const r = spawnSync(cmd[0], cmd[1], { stdio: 'inherit' });
-      console.log(r.status === 0 ? C.g('✓ Python installed — Pond will find it automatically.') : C.y(`Install didn't finish. You can run it later: ${[cmd[0], ...cmd[1]].join(' ')}`));
-      return;
-    }
+  if (!py) {
+    console.log(`\n${C.y('Python 3.9+ was not found.')} Pond needs it to analyze data, read spreadsheets and PDFs, and run scripts.`);
+    console.log(C.d(process.platform === 'win32' ? '  Install it with: winget install -e --id Python.Python.3.12   then run setup again.'
+      : process.platform === 'darwin' ? '  Install it with: brew install python   then run setup again.'
+      : '  Install it with your package manager, e.g.: sudo apt install python3 python3-venv   then run setup again.'));
+    return false;
   }
-  const hint = cmd ? [cmd[0], ...cmd[1]].join(' ')
-    : process.platform === 'linux' ? "sudo apt install python3   (or your distro's package manager)"
-    : 'https://www.python.org/downloads/';
-  console.log(C.d(`  To add it later: ${hint}`));
+  if (!existsSync(VENV_PY)) {
+    process.stdout.write(C.d(`Creating Pond's Python environment (.venv) with Python ${py.version}… `));
+    const r = runPy(py.bin, [...py.pre, '-m', 'venv', VENV], { timeout: 180000 });
+    if (r.status !== 0 || !existsSync(VENV_PY)) {
+      console.log(C.y('failed'));
+      console.log(C.d(`  ${String(r.stderr || r.stdout || '').trim().split('\n').slice(-2).join(' ')}`));
+      if (process.platform === 'linux') console.log(C.d('  On Debian/Ubuntu: sudo apt install python3-venv   then run setup again.'));
+      console.log(C.d(`  Pond will use the system Python (${py.version}) for now.`));
+      return true;
+    }
+    console.log(C.g('done'));
+  }
+  const missing = PY_KIT.filter((m) => runPy(VENV_PY, ['-c', `import ${m}`]).status !== 0);
+  if (missing.length) {
+    console.log(C.d(`Installing Python packages for Pond: ${missing.join(', ')} (one-time, ~1–2 min)…`));
+    const r = spawnSync(VENV_PY, ['-m', 'pip', 'install', '--disable-pip-version-check', '--quiet', ...missing], { stdio: 'inherit', windowsHide: true });
+    if (r.status !== 0) { console.log(C.y(`Couldn't install ${missing.join(', ')} — Pond still works; retry by running setup again.`)); return true; }
+  }
+  console.log(`${C.g('✓')} Python ready — ${PY_KIT.join(', ')} (in ${path.relative(process.cwd(), VENV) || '.venv'})`);
+  return true;
 }
 
 if (!interactive) {
   if (!args['base-url']) console.log(C.d('Skipping interactive setup (no terminal). Edit .env or use Agent Hub → LLM Engine later.'));
-  await checkPython({ interactive: false });
+  await ensurePython();
   process.exit(0);
 }
 
@@ -149,7 +162,7 @@ const isCloud = (u) => { try { return CLOUD.test(new URL(u).hostname); } catch {
 const hasKey = curKey && !curKey.startsWith('sk-your');
 if (curBase && curModel && (hasKey || !isCloud(curBase))) {
   const keep = (await ask(`Current: ${C.c(curModel)} at ${C.c(curBase)}. Keep it? (Y/n)`, 'Y')).toLowerCase();
-  if (keep !== 'n') { console.log(C.g('✓ Keeping current model settings')); await checkPython({ interactive: true }); process.exit(0); }
+  if (keep !== 'n') { console.log(C.g('✓ Keeping current model settings')); await ensurePython(); process.exit(0); }
 }
 
 process.stdout.write(C.d('Looking for local model servers… '));
@@ -169,7 +182,7 @@ const choices = [
 ];
 choices.forEach((c, i) => console.log(`  ${C.c(String(i + 1))}) ${c.label}`));
 const pick = choices[Math.max(0, Math.min(choices.length - 1, Number(await ask('Choose', '1')) - 1))];
-if (pick.skip) { console.log(C.y('Skipped. Pond will start, but needs a model before it can chat.')); await checkPython({ interactive: true }); process.exit(0); }
+if (pick.skip) { console.log(C.y('Skipped. Pond will start, but needs a model before it can chat.')); await ensurePython(); process.exit(0); }
 
 let baseUrl = pick.baseUrl;
 if (pick.custom) {
@@ -211,4 +224,4 @@ const location = await ask('Your city, for local suggestions (Enter to skip):', 
 
 applyConfig({ baseUrl, apiKey, model, location });
 console.log(`\n${C.g('✓ Saved to .env')}: ${C.c(model)} at ${C.c(baseUrl)}${location ? ` · ${location}` : ''}`);
-await checkPython({ interactive: true });
+await ensurePython();

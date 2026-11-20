@@ -74,7 +74,8 @@ The installer:
 1. gets Node.js 18+ if needed (winget / Homebrew / nvm),
 2. downloads Pond to `~/pond`,
 3. finds a local model server (Ollama, LM Studio, vLLM, llama.cpp) or asks for an API endpoint and lets you pick a model,
-4. checks for Python (optional — lets Pond analyze data, spreadsheets and PDFs) and offers to install it,
+4. gets Python 3.9+ if needed and gives Pond its own Python environment (`.venv`) with pandas, matplotlib,
+   openpyxl and pypdf — for data, spreadsheets, PDFs and scripts,
 5. starts Pond at **http://localhost:8787** (and adds a desktop shortcut on Windows).
 
 ### Connect your model
