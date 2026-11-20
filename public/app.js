@@ -4,6 +4,16 @@ const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
 const messagesEl = $('#messages');
 
+// ---------- Routines ----------
+const pendingJobRuns = new Set(); // clicked ▶, server hasn't reported it running yet
+// "0 7 * * *" → "Daily 7:00", "30 8 * * 1-5" → "Weekdays 8:30"; anything else stays as written
+function cronLabel(expr) {
+  const m = String(expr).trim().match(/^(\d{1,2}) (\d{1,2}) \* \* (\*|1-5|0,6|6,0)$/);
+  if (!m) return String(expr);
+  const time = `${Number(m[2])}:${String(m[1]).padStart(2, '0')}`;
+  return `${m[3] === '*' ? 'Daily' : m[3] === '1-5' ? 'Weekdays' : 'Weekends'} ${time}`;
+}
+
 // ---------- Scrolling: follow new output only while the reader is at the bottom ----------
 // Scrolling up (to re-read while Pond is thinking or writing) stops the auto-follow; the ↓ button
 // or scrolling back down resumes it.
@@ -977,13 +987,22 @@ async function refreshState() {
       for (const j of jobs.slice(0, 5)) {
         const div = document.createElement('div');
         div.className = 'item';
-        div.innerHTML = `<div><div>${escapeHtml(j.name)}</div><div class="sub">${escapeHtml(j.cron || `every ${j.intervalMin}m`)}</div></div>`;
+        const running = (s.runningJobs || []).includes(j.id) || pendingJobRuns.has(j.id);
+        const when = j.cron ? cronLabel(j.cron) : `every ${j.intervalMin}m`;
+        const status = running ? '<span class="job-running">Running…</span>'
+          : j.lastStatus === 'error' ? `<span class="job-err" title="${escapeHtml(j.lastOutput || '')}">· last run failed</span>`
+          : j.lastRunAt && Date.now() - Date.parse(j.lastRunAt) < 10 * 60_000 ? '<span class="job-ok">· ✓ done just now</span>' : '';
+        div.innerHTML = `<div><div>${escapeHtml(j.name)}</div><div class="sub">${running ? '' : escapeHtml(when) + ' '}${status}</div></div>`;
         const run = document.createElement('button');
-        run.innerHTML = icon('play', 12);
-        run.title = 'Run now';
+        run.innerHTML = running ? '<span class="spinner"></span>' : icon('play', 12);
+        run.title = running ? 'Running…' : 'Run now';
+        run.disabled = running;
         run.onclick = async () => {
-          showToast(`Running "${j.name}"…`);
-          await fetch(`/api/jobs/${j.id}/run`, { method: 'POST' });
+          pendingJobRuns.add(j.id);
+          run.disabled = true; run.innerHTML = '<span class="spinner"></span>'; run.title = 'Running…';
+          div.querySelector('.sub').innerHTML = '<span class="job-running">Running…</span>';
+          await fetch(`/api/jobs/${j.id}/run`, { method: 'POST' }).catch(() => {});
+          setTimeout(() => { pendingJobRuns.delete(j.id); }, 5000); // server state takes over
         };
         div.appendChild(run);
         sideJobList.appendChild(div);
@@ -2123,6 +2142,14 @@ function connectEvents() {
       return;
     }
 
+    if (payload.type === 'job_started' || payload.type === 'job_finished') {
+      if (payload.type === 'job_finished') {
+        pendingJobRuns.delete(payload.jobId);
+        if (payload.status === 'error') showToast(`Routine "${payload.name}" failed: ${payload.error || 'error'}`);
+      }
+      refreshState();
+      return;
+    }
     if (payload.type === 'proactive_status') {
       const pill = $('#proactivePill');
       pill.classList.toggle('active', Boolean(payload.running));

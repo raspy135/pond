@@ -70,7 +70,7 @@ import { startTurn, pushTurnEvent, endTurn, getRunningTurn, attachTurn } from '.
 import { loadPlugins, listPlugins, setPluginEnabled, savePluginSettings, reloadPlugins, handlePluginRoute, getPluginUiState, takeFooters, emitEvent } from './lib/plugins.js';
 import { getVapid, saveSubscription, removeSubscription, listSubscriptions, pushToAllDevices } from './lib/push.js';
 import { buildSystemPrompt, buildChatMessages, prepareSessionChatTurn, saveChatImages, compactSession, estimateSessionTokens, buildLiveContext, streamChat, runAgentTurn } from './lib/llm.js';
-import { executeJob } from './lib/scheduler.js';
+import { executeJob, getRunningJobIds } from './lib/scheduler.js';
 import {
   proactiveTick,
   runEmailMonitor,
@@ -270,6 +270,7 @@ const server = http.createServer(async (req, res) => {
         events,
         tasks: (Array.isArray(tasks) ? tasks : []).filter((t) => t.status !== 'done'),
         jobs: Array.isArray(jobs) ? jobs : [],
+        runningJobs: getRunningJobIds(),
         watches,
         importantEmails,
         emailCount: activeEmails.length,
