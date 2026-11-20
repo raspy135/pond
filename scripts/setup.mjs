@@ -7,6 +7,7 @@ import { readFileSync, writeFileSync, existsSync, copyFileSync } from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ENV = path.join(ROOT, '.env');
@@ -68,8 +69,45 @@ if (args['base-url'] || args.model || args['api-key'] || args.location) {
   applyConfig({ baseUrl: args['base-url'], apiKey: args['api-key'] ?? (args['base-url'] ? '' : undefined), model: args.model, location: args.location });
   console.log(C.g('✓ Saved model settings to .env'));
 }
+// ---------- Python (optional, but Pond's most powerful tool) ----------
+function findPython() {
+  const cands = process.platform === 'win32'
+    ? [['py', ['-3', '--version']], ['python', ['--version']], ['python3', ['--version']]]
+    : [['python3', ['--version']], ['python', ['--version']]];
+  for (const [bin, a] of cands) {
+    try {
+      const r = spawnSync(bin, a, { encoding: 'utf8', timeout: 8000, windowsHide: true });
+      const m = `${r.stdout || ''}${r.stderr || ''}`.match(/Python (3\.\d+(?:\.\d+)?)/);
+      if (r.status === 0 && m) return { bin, version: m[1] }; // the Windows Store "python" stub fails this
+    } catch { /* not installed */ }
+  }
+  return null;
+}
+const hasCmd = (c) => spawnSync(process.platform === 'win32' ? 'where' : 'which', [c], { encoding: 'utf8', windowsHide: true }).status === 0;
+async function checkPython({ interactive: canAsk }) {
+  const py = findPython();
+  if (py) { console.log(`${C.g('✓')} Python ${py.version} found — Pond can use it to analyze data, read spreadsheets and PDFs, and more.`); return; }
+  console.log(`\n${C.y('Python not found.')} It's optional, but it lets Pond analyze data, read spreadsheets and PDFs, and run small scripts for you.`);
+  let cmd = null;
+  if (process.platform === 'win32' && hasCmd('winget')) cmd = ['winget', ['install', '-e', '--id', 'Python.Python.3.12', '--accept-source-agreements', '--accept-package-agreements']];
+  else if (process.platform === 'darwin' && hasCmd('brew')) cmd = ['brew', ['install', 'python']];
+  if (cmd && canAsk) {
+    const yes = (await ask(`Install Python now with ${cmd[0]}? (Y/n)`, 'Y')).toLowerCase() !== 'n';
+    if (yes) {
+      const r = spawnSync(cmd[0], cmd[1], { stdio: 'inherit' });
+      console.log(r.status === 0 ? C.g('✓ Python installed — Pond will find it automatically.') : C.y(`Install didn't finish. You can run it later: ${[cmd[0], ...cmd[1]].join(' ')}`));
+      return;
+    }
+  }
+  const hint = cmd ? [cmd[0], ...cmd[1]].join(' ')
+    : process.platform === 'linux' ? "sudo apt install python3   (or your distro's package manager)"
+    : 'https://www.python.org/downloads/';
+  console.log(C.d(`  To add it later: ${hint}`));
+}
+
 if (!interactive) {
   if (!args['base-url']) console.log(C.d('Skipping interactive setup (no terminal). Edit .env or use Agent Hub → LLM Engine later.'));
+  await checkPython({ interactive: false });
   process.exit(0);
 }
 
@@ -111,7 +149,7 @@ const isCloud = (u) => { try { return CLOUD.test(new URL(u).hostname); } catch {
 const hasKey = curKey && !curKey.startsWith('sk-your');
 if (curBase && curModel && (hasKey || !isCloud(curBase))) {
   const keep = (await ask(`Current: ${C.c(curModel)} at ${C.c(curBase)}. Keep it? (Y/n)`, 'Y')).toLowerCase();
-  if (keep !== 'n') { console.log(C.g('✓ Keeping current model settings')); process.exit(0); }
+  if (keep !== 'n') { console.log(C.g('✓ Keeping current model settings')); await checkPython({ interactive: true }); process.exit(0); }
 }
 
 process.stdout.write(C.d('Looking for local model servers… '));
@@ -131,7 +169,7 @@ const choices = [
 ];
 choices.forEach((c, i) => console.log(`  ${C.c(String(i + 1))}) ${c.label}`));
 const pick = choices[Math.max(0, Math.min(choices.length - 1, Number(await ask('Choose', '1')) - 1))];
-if (pick.skip) { console.log(C.y('Skipped. Pond will start, but needs a model before it can chat.')); process.exit(0); }
+if (pick.skip) { console.log(C.y('Skipped. Pond will start, but needs a model before it can chat.')); await checkPython({ interactive: true }); process.exit(0); }
 
 let baseUrl = pick.baseUrl;
 if (pick.custom) {
@@ -173,3 +211,4 @@ const location = await ask('Your city, for local suggestions (Enter to skip):', 
 
 applyConfig({ baseUrl, apiKey, model, location });
 console.log(`\n${C.g('✓ Saved to .env')}: ${C.c(model)} at ${C.c(baseUrl)}${location ? ` · ${location}` : ''}`);
+await checkPython({ interactive: true });
