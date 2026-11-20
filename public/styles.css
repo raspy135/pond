@@ -93,6 +93,7 @@ body {
 .new-chat-btn:hover { border-color: var(--accent); }
 
 .side-section { border-top: 1px solid var(--border); padding-top: 10px; }
+.side-links { display: inline-flex; gap: 10px; }
 .side-title {
   font-size: .68rem; text-transform: uppercase; letter-spacing: .11em;
   color: var(--muted); margin-bottom: 7px;

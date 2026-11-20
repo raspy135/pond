@@ -27,7 +27,7 @@
       </div>
 
       <div class="side-section">
-        <div class="side-title">Agent Status <button id="compactBtn" class="link-btn" title="Compact older chat messages into a summary">compact</button></div>
+        <div class="side-title">Agent Status <span class="side-links"><button id="checkInBtn" class="link-btn" title="Check email & agenda now (a proactive check-in)">check in</button><button id="compactBtn" class="link-btn" title="Compact older chat messages into a summary">compact</button></span></div>
         <div class="status-row"><span class="dot-indicator" id="keyDot"></span><span id="keyStatus">Checking…</span></div>
         <div class="status-row model" id="modelLine">—</div>
         <div class="status-row model" id="contextLine">—</div>
@@ -106,9 +106,6 @@
           <button id="notifBtn" class="top-action-btn" title="Browser Notifications">
             <span data-icon="bell" data-size="17"></span>
             <span class="badge" id="notifBadge" hidden>0</span>
-          </button>
-          <button id="checkInBtn" class="top-action-btn" title="Force proactive check-in & email scan">
-            <span data-icon="handwave" data-size="18"></span>
           </button>
           <button id="hubBtn" class="top-action-btn" title="Agent Hub: Proactive, Email, Jobs, Watchers, Sentinel, MCP">
             <span data-icon="sliders" data-size="17"></span>
