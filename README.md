@@ -41,7 +41,7 @@ machine, with your model. One Node.js process serves a web app you can install o
   line is shown embedded in the message (pages live, images inline, other files as a card).
 
 **Yours to shape**
-- **Skills** — save any workflow ("make my weekly dashboard") and re-run it with `/name` + Tab.
+- **Skills** — save any workflow ("make my weekly dashboard") and re-run it by typing `/name` (Tab completes the name).
 - **Plugins** — extend Pond with a small JavaScript API (tools, events, routes, UI). Example: tokens/second.
 - **Personality** — default, casual, concise, playful, or write your own.
 - **Appearance** — a cute ink-slime mascot with moods and color themes, or upload your own avatar.
@@ -190,7 +190,7 @@ several endpoints, context length, reasoning effort, and `"inputTypes": ["text",
 | "What needs my attention today?" | Checks email, calendar, reminders and tasks |
 | "Every weekday at 8, brief me on my inbox and agenda" | Creates a recurring routine |
 | "Unsubscribe me from these promo emails" | Uses the browser to do it (with Sentinel approval) |
-| `/dashboard` + Tab | Builds a dashboard from real data in Pond's chart style |
+| `/dashboard make a weather chart for this week` | Fetches the forecast and builds an animated chart page in Pond's chart style |
 | "Make a 3D model of a lighthouse" | Interactive three.js scene in the chat |
 | "Save this as a skill" | Saves the workflow; run it later with `/its-name` |
 | Paste a photo | Asks about it (vision models) |
