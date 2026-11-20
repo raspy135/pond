@@ -1583,7 +1583,7 @@ async function loadHubData() {
     send_email: ['mail', 'Send Email'],
     run_python: ['terminal', 'Run Python'],
     delete_file: ['trash', 'Delete File'],
-    write_file: ['file', 'Write File'],
+    write_file: ['file', 'Write & Edit Files'],
     http_request_write: ['globe', 'External API Write'],
     mcp_tool: ['plug', 'External MCP Tool'],
   };
