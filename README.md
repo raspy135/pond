@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/icons/icon-512.png" width="128" alt="Pond mascot">
+  <img src="public/mascot/ink-happy.svg" width="150" alt="Pond mascot — a little ink slime">
 </p>
 
 <h1 align="center">Pond</h1>
