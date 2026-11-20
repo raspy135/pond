@@ -89,6 +89,52 @@ npm start                   # or start.bat / ./start.sh
 
 </details>
 
+## Start, stop, restart
+
+Pond runs as a normal program in a terminal window — while that window is open, Pond is running (checking email,
+sending notifications), even if no browser has the app open.
+
+| | Windows | macOS / Linux |
+|---|---|---|
+| **Start** | Desktop shortcut, or `start.bat` in `~\pond` | `~/pond/start.sh` |
+| **Stop** | Close the Pond window (or `Ctrl+C` in it) | `Ctrl+C` in the terminal |
+| **Restart** | Stop, then start | Stop, then start |
+
+Restart after **updating** (stop Pond first, then run the install line) or after **editing `.env`**.
+Settings changed in Agent Hub apply immediately — no restart needed. Your chats, settings and data are kept.
+
+The computer must stay awake for Pond to work in the background — turn off sleep while plugged in.
+
+<details>
+<summary>Start Pond automatically</summary>
+
+**Windows** — at sign-in: press `Win+R`, type `shell:startup`, and put a shortcut to `start.bat` in that folder.
+
+**Linux** (systemd user service):
+
+```bash
+mkdir -p ~/.config/systemd/user
+cat > ~/.config/systemd/user/pond.service <<'EOF'
+[Unit]
+Description=Pond
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/pond
+ExecStart=/usr/bin/env node server.js
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+EOF
+systemctl --user daemon-reload && systemctl --user enable --now pond
+loginctl enable-linger "$USER"   # keep running after you log out
+```
+
+Then: `systemctl --user restart pond` · `systemctl --user stop pond` · logs: `journalctl --user -u pond -f`.
+
+</details>
+
 > ⚠️ **Pond has no login.** It can read your email and run code, so keep it on `localhost` or a private network
 > such as Tailscale. Never forward its port to the internet.
 
