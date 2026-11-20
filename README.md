@@ -75,7 +75,15 @@ The installer:
 3. finds a local model server (Ollama, LM Studio, vLLM, llama.cpp) or asks for an API endpoint and lets you pick a model,
 4. starts Pond at **http://localhost:8787** (and adds a desktop shortcut on Windows).
 
-Didn't find your model, or want to add another one? → **[Connect your model](docs/setup-llm.md)** (step by step, with screenshots).
+### Connect your model
+
+If the installer didn't find your model server, add it in the app: **Agent Hub (⚙️) → LLM Engine → + New Profile**.
+Pick your server, and Pond connects and lists its models — local servers need no API key.
+
+<p align="center"><img src="docs/images/setup-llm/03-new-profile.png" alt="Adding a model in Agent Hub → LLM Engine" width="720"></p>
+
+Step-by-step guide with all screenshots, server settings and troubleshooting: **[docs/setup-llm.md](docs/setup-llm.md)**.
+
 
 **To update, run the same line again** — your `.env` and `data/` are never touched.
 Options: `POND_HOME` (install folder), `POND_NO_START=1`, `POND_NONINTERACTIVE=1`.
