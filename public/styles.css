@@ -190,7 +190,7 @@ body {
 .model-menu-note { font-size: .7rem; color: var(--muted); padding: 2px 8px 6px; line-height: 1.35; }
 .model-menu-item.manage { border-top: 1px solid var(--border); border-radius: 0 0 8px 8px; margin-top: 2px; }
 @media (max-width: 640px) { .model-chip { max-width: 100%; } .model-menu { position: fixed; left: 12px; right: 12px; top: 58px; width: auto; } }
-@media (max-width: 520px) { #proactivePill { display: none; } .topbar-left { flex: 1; gap: 8px; } }
+@media (max-width: 520px) { #proactivePill { display: none; } .topbar-left { flex: 1; gap: 8px; } .model-switch { flex: 1 1 auto; display: flex; } }
 
 .top-action-btn {
   position: relative; background: var(--panel-2); border: 1px solid var(--border);
@@ -643,6 +643,7 @@ a.artifact-btn { text-decoration: none; }
 }
 @media (max-width: 480px) {
   .status-pill { padding: 4px 8px; font-size: .7rem; max-width: 125px; overflow: hidden; text-overflow: ellipsis; }
+  .status-pill.model-chip { max-width: 100%; } /* the model chip uses the free space instead */
   .topbar-actions { gap: 4px; }
   .top-action-btn { height: 34px; min-width: 34px; padding: 0 7px; }
 }
