@@ -13,6 +13,79 @@ plugins/
 Drop the folder into `plugins/`, open **Agent Hub → Plugins**, press **Reload plugins**, and switch it on.
 Edits to `index.mjs` are picked up by **Reload** — no server restart needed.
 
+## Your first plugin (5 minutes)
+
+We'll build **Hello**: a dice tool the AI can use, plus a "messages today" line in the sidebar.
+
+**1. Create the folder** `plugins/hello/` (inside your Pond folder) with two files.
+
+`plugins/hello/plugin.json`:
+
+```json
+{
+  "id": "hello",
+  "name": "Hello",
+  "version": "1.0.0",
+  "description": "My first plugin: a dice tool and a message counter.",
+  "pondApi": 1,
+  "settings": [
+    { "key": "emoji", "label": "Emoji in the sidebar", "type": "text", "default": "👋" }
+  ]
+}
+```
+
+`plugins/hello/index.mjs`:
+
+```js
+export function activate(api) {
+  // 1. A tool the AI can call ("roll two dice for me")
+  api.registerTool({
+    name: 'roll_dice',
+    description: 'Roll dice. Use when the user asks to roll dice or wants a random number.',
+    parameters: {
+      type: 'object',
+      properties: {
+        sides: { type: 'number', description: 'sides per die (default 6)' },
+        count: { type: 'number', description: 'how many dice (default 1)' },
+      },
+    },
+    run: ({ sides = 6, count = 1 }) => {
+      const rolls = Array.from({ length: Math.min(20, count) }, () => 1 + Math.floor(Math.random() * sides));
+      return { rolls, total: rolls.reduce((a, b) => a + b, 0) };
+    },
+  });
+
+  // 2. React to an event, keep a little state, and 3. show it in the sidebar
+  api.on('chat_message', async (m) => {
+    if (m.role !== 'user') return;
+    const today = new Date().toISOString().slice(0, 10);
+    const saved = await api.storage.get('count', { day: today, n: 0 });
+    const n = saved.day === today ? saved.n + 1 : 1;
+    await api.storage.set('count', { day: today, n });
+    api.ui.statusItem('today', `${api.settings.get('emoji')} ${n} message${n === 1 ? '' : 's'} today`);
+  });
+}
+```
+
+**2. Turn it on.** Agent Hub (⚙️) → **Plugins** → **Reload plugins**, then switch **Hello** on.
+A settings form appears under it, built from the `settings` list in `plugin.json` — try another emoji.
+
+**3. Try it.**
+- Ask *"roll two 20-sided dice"* — the AI calls your tool (`plugin_hello_roll_dice`) and answers with the result.
+- Send a few messages — the sidebar shows *👋 3 messages today*.
+
+**4. Change it.** Edit `index.mjs`, press **Reload plugins** — no server restart needed. `api.log(...)` and
+errors appear in Pond's console window, prefixed with the plugin id. If your plugin throws 5 errors in
+10 minutes, Pond switches it off and tells you; fix it and switch it back on.
+
+**5. Share it.** A plugin is just its folder — zip it or put it in a git repo; others drop it into `plugins/`.
+
+> Tip: turning on a plugin that adds tools changes the tool list, so the model server re-reads Pond's prompt
+> once. After that, prompt caching works as usual.
+
+From here: `api.registerRoute` for webhooks, `api.notify` for push notifications, `api.askAgent` to let the AI
+do a task in the background, and [`plugins/toks`](../plugins/toks) for a real example that uses events and UI.
+
 ## plugin.json
 
 ```json
