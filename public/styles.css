@@ -112,7 +112,12 @@ body {
   padding: 7px 9px; font-size: .78rem; display: flex; gap: 8px; align-items: flex-start; justify-content: space-between;
 }
 .item .sub { color: var(--muted); font-size: .68rem; margin-top: 2px; }
-.item button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: .9rem; line-height: 1; padding: 2px; }
+.item button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: .9rem; line-height: 1; padding: 2px; flex-shrink: 0; }
+/* Long text (URLs!) wraps inside the card; very long items show 4 lines until clicked. */
+.item > :first-child, .memory-list li > :first-child { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.item > :first-child > :first-child { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.item.expanded > :first-child > :first-child { display: block; -webkit-line-clamp: unset; }
+.item.clamped { cursor: pointer; }
 .item button:hover { color: var(--ok); }
 .task-item { border-left: 2px solid var(--accent); }
 .event-item { border-left: 2px solid var(--ok); }
@@ -123,7 +128,7 @@ body {
   border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px;
   display: flex; align-items: flex-start; justify-content: space-between; gap: 6px;
 }
-.memory-list li button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: .85rem; }
+.memory-list li button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: .85rem; flex-shrink: 0; }
 .memory-list li button:hover { color: var(--danger); }
 
 .empty { color: var(--muted); font-size: .76rem; font-style: italic; }

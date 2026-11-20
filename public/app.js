@@ -353,6 +353,22 @@ addEventListener('message', (e) => {
   }
 });
 
+// ---------- Sidebar cards: click a long (clamped) item to show all of it ----------
+document.addEventListener('click', (e) => {
+  const item = e.target.closest?.('.item-list .item');
+  if (!item || e.target.closest('button, a')) return;
+  const text = item.firstElementChild?.firstElementChild;
+  if (item.classList.contains('expanded') || (text && text.scrollHeight > text.clientHeight + 1)) item.classList.toggle('expanded');
+});
+// Mark clamped items (pointer cursor) when a sidebar list re-renders — watches only the sidebar lists
+const markClamped = (list) => requestAnimationFrame(() => {
+  for (const item of list.querySelectorAll(':scope > .item')) {
+    const text = item.firstElementChild?.firstElementChild;
+    item.classList.toggle('clamped', Boolean(text && text.scrollHeight > text.clientHeight + 1) || item.classList.contains('expanded'));
+  }
+});
+for (const list of document.querySelectorAll('.item-list')) new MutationObserver(() => markClamped(list)).observe(list, { childList: true });
+
 // ---------- 3D viewport buttons (expand / show code) ----------
 document.addEventListener('click', (e) => {
   const btn = e.target.closest?.('.artifact-btn');
