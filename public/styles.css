@@ -290,6 +290,9 @@ body {
 .msg-row.assistant .avatar .pond-mascot { width: 34px; height: 34px; margin: -2px; user-select: none; transition: transform .2s ease; }
 .msg-row.assistant:hover .avatar .pond-mascot:not(.pm-working) { transform: rotate(-6deg) scale(1.06); }
 .msg-row.user { justify-content: flex-end; }
+.msg-row.stopped .bubble { opacity: .5; }
+.msg-row.stopped:not(.user) { opacity: .55; }
+.stopped-note { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
 .msg-col { display: flex; flex-direction: column; max-width: 78%; min-width: 0; }
 .msg-row.user .msg-col { align-items: flex-end; }
 .msg-row.assistant .msg-col { align-items: flex-start; flex: 1; }

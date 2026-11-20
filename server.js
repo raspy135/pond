@@ -2,7 +2,7 @@
 import http from 'node:http';
 import { readFile, rm, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import {
+import { markTurnCancelled,
   PUBLIC,
   DATA,
   uid,
@@ -1001,12 +1001,14 @@ const server = http.createServer(async (req, res) => {
       };
 
       let sessionId = null;
+      let userTs = null; // identifies this turn's message, so Stop can retire it
       let messages;
       if (lastUser) {
         const session = targetSession;
         const images = await saveChatImages(body.images);
         messages = await prepareSessionChatTurn(session, lastUser.content, { images });
         sessionId = session.id;
+        userTs = session.messages[session.messages.length - 1]?.ts || null;
         // Keep session index metadata fresh
         await touchSessionMeta(session);
         broadcast({ type: 'message', sessionId, role: 'user', content: lastUser.content, images: images.map((i) => i.url), clientId });
@@ -1064,6 +1066,11 @@ const server = http.createServer(async (req, res) => {
       } finally {
         clearInterval(streamKeepalive);
         activeChatControllers.delete(requestId);
+        if (chatAbort.signal.aborted && sessionId && userTs) {
+          // Stopped: keep it on screen, but never send it to the model again (else the next message re-runs it).
+          await markTurnCancelled(sessionId, userTs).catch(() => {});
+          broadcast({ type: 'sessions_updated', sessionId });
+        }
         endTurn(turn, chatAbort.signal.aborted ? 'stopped' : 'done'); // after the reply is saved, so viewers reload the final chat
       }
       if (!res.writableEnded) res.end();

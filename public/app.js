@@ -570,6 +570,16 @@ function makeAliveMascot(m) {
   m.classList.add('pm-alive');
 }
 
+function markStopped(bodyEl) {
+  const row = bodyEl?.closest('.msg-row');
+  if (!row || row.classList.contains('stopped')) return;
+  row.classList.add('stopped');
+  const note = document.createElement('div');
+  note.className = 'stopped-note';
+  note.textContent = 'Stopped · not sent to Pond';
+  row.querySelector('.msg-col')?.appendChild(note);
+}
+
 function addMessage(role, text, { proactive = false, tag = '' } = {}) {
   const row = document.createElement('div');
   row.className = `msg-row ${role}`;
@@ -864,6 +874,8 @@ async function sendMessage(text) {
       notice = 'Connection stalled — syncing latest reply…'; // iOS froze the stream in the background
       scheduleSyncRecovery();
     } else if (err?.name === 'AbortError') {
+      // Stopped before any reply: hand the text back so it can be edited and re-sent.
+      if (t.stopRequested && !t.view.acc && !input.value.trim()) { input.value = trimmed; autoGrowInput(); }
       if (t.view.acc) history.push({ role: 'assistant', content: t.view.acc });
     } else {
       // Mobile / Tailscale drop: the server keeps going — resync (and re-attach if still running).
@@ -874,6 +886,7 @@ async function sendMessage(text) {
     if (!t.detached) t.view.finish({ stopped: t.stopRequested, notice });
     releaseTurn(t);
     refreshState();
+    if (t.stopRequested && !t.detached) { lastRenderedSessionKey = ''; setTimeout(() => loadConversation({ force: false, silent: true }), 400); } // show it as stopped
   }
 }
 
@@ -1971,8 +1984,10 @@ async function loadConversation({ force = true, silent = false } = {}) {
         renderAssistantBody(bodyEl, m.content || '');
         if (m.pluginFooters) setMessageFooter(bodyEl, m.pluginFooters);
       } else if (m.role === 'user') {
-        history.push({ role: 'user', content: m.content });
-        appendMessageImages(addMessage('user', m.content), (m.images || []).map((i) => i.url));
+        if (!m.cancelled) history.push({ role: 'user', content: m.content });
+        const body = addMessage('user', m.content);
+        appendMessageImages(body, (m.images || []).map((i) => i.url));
+        if (m.cancelled) markStopped(body);
       }
     }
     if (!(data.messages || []).length && !data.activeTurn) showGreeting();
