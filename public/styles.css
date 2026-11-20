@@ -483,6 +483,8 @@ body {
 .form-grid, .inline-form { display: flex; flex-direction: column; gap: 10px; }
 .form-grid label { display: flex; flex-direction: column; gap: 4px; font-size: .78rem; color: var(--text-soft); }
 .form-grid label.checkbox-field { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: .84rem; cursor: pointer; }
+.form-grid div.checkbox-field { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; font-size: .84rem; color: var(--text); }
+.form-grid div.checkbox-field label { flex-direction: row; align-items: center; gap: 6px; font-size: .84rem; color: var(--text); cursor: pointer; }
 .form-grid input[type="text"], .form-grid input[type="password"], .form-grid input[type="number"], .form-grid select, .form-grid textarea,
 .inline-form input, .inline-form select, .inline-form textarea {
   background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
@@ -551,6 +553,10 @@ body {
 .artifact-3d { background: #0f1117; }
 .artifact-embed iframe { transition: height .2s ease; }
 .artifact-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.field-hint { display: block; margin-top: 4px; font-size: .74rem; font-weight: 400; color: var(--muted); line-height: 1.35; }
+.field-hint[data-state="good"] { color: #16a34a; }
+.field-hint[data-state="bad"] { color: #dc2626; }
+.field-hint code { font-size: .72rem; }
 .embed-img { margin: 4px 0 10px; }
 .embed-img img { display: block; max-height: 70vh; }
 .embed-img figcaption { font-size: .8rem; color: var(--muted, #64748b); margin-top: 4px; }

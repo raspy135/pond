@@ -2256,12 +2256,36 @@ $$('#hubTabs .tab').forEach((t) => t.addEventListener('click', () => switchHubTa
 
 // LLM Engine: Add / Switch / Save / Delete / Test Profiles + Raw llm.json
 const LLM_PROVIDER_PRESETS = {
-  openai: { label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini', apiKey: '$OPENAI_API_KEY' },
-  openrouter: { label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', model: 'deepseek/deepseek-chat', apiKey: '' },
-  deepseek: { label: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', apiKey: '$DEEPSEEK_API_KEY' },
-  ollama: { label: 'Ollama (Local)', baseUrl: 'http://localhost:11434/v1', model: 'llama3.1', apiKey: 'ollama' },
-  lmstudio: { label: 'LM Studio (Local)', baseUrl: 'http://localhost:1234/v1', model: 'local-model', apiKey: 'lm-studio' },
+  ollama: { label: 'Ollama', baseUrl: 'http://localhost:11434/v1' },
+  lmstudio: { label: 'LM Studio', baseUrl: 'http://localhost:1234/v1' },
+  vllm: { label: 'vLLM', baseUrl: 'http://localhost:8000/v1' },
+  sglang: { label: 'SGLang', baseUrl: 'http://localhost:30000/v1' },
+  llamacpp: { label: 'llama.cpp', baseUrl: 'http://localhost:8080/v1' },
+  openai: { label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5-mini' },
+  openrouter: { label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1' },
+  deepseek: { label: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+  custom: { label: '', baseUrl: '' },
 };
+
+// Ask the server which models it serves and offer them in the Model ID field (datalist).
+async function findServerModels({ urlEl, keyEl, modelEl, listEl, hintEl, profileKey = null }) {
+  const baseUrl = urlEl.value.trim();
+  if (!/^https?:\/\//i.test(baseUrl)) { hintEl.textContent = ''; return; }
+  hintEl.textContent = 'Looking for models…';
+  try {
+    const r = await fetch('/api/llm/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ baseUrl, apiKey: keyEl.value.trim(), profileKey }) }).then((x) => x.json());
+    if (!r.ok) { hintEl.textContent = `Can't reach it yet — ${String(r.error || 'no answer').slice(0, 80)}`; hintEl.dataset.state = 'bad'; return; }
+    const models = r.sampleModels || [];
+    listEl.innerHTML = models.map((m) => `<option value="${escapeHtml(m)}"></option>`).join('');
+    if (models.length && !modelEl.value.trim()) modelEl.value = models[0];
+    hintEl.textContent = models.length ? `✓ Connected — ${r.modelsCount ?? models.length} model${(r.modelsCount ?? models.length) === 1 ? '' : 's'} found` : '✓ Connected';
+    hintEl.dataset.state = 'good';
+  } catch (e) { hintEl.textContent = ''; }
+}
+const newProfFinder = () => findServerModels({ urlEl: $('#newProfBaseUrl'), keyEl: $('#newProfApiKey'), modelEl: $('#newProfModel'), listEl: $('#newProfModelList'), hintEl: $('#newProfFound') });
+$('#newProfBaseUrl').addEventListener('change', newProfFinder);
+$('#newProfApiKey').addEventListener('change', newProfFinder);
+$('#llmBaseUrl').addEventListener('change', () => findServerModels({ urlEl: $('#llmBaseUrl'), keyEl: $('#llmApiKey'), modelEl: $('#llmModel'), listEl: $('#llmModelList'), hintEl: $('#llmFound'), profileKey: $('#llmActiveProfile').value }));
 
 $('#toggleNewProfileBtn').addEventListener('click', () => {
   const panel = $('#newProfilePanel');
@@ -2274,22 +2298,26 @@ $('#cancelNewProfileBtn').addEventListener('click', () => {
 $('#newProfPreset').addEventListener('change', (e) => {
   const p = LLM_PROVIDER_PRESETS[e.target.value];
   if (!p) return;
-  if (!$('#newProfKey').value.trim()) $('#newProfKey').value = e.target.value;
   $('#newProfLabel').value = p.label;
   $('#newProfBaseUrl').value = p.baseUrl;
-  $('#newProfModel').value = p.model;
-  $('#newProfApiKey').value = p.apiKey;
+  $('#newProfModel').value = p.model || '';
+  $('#newProfModelList').innerHTML = '';
+  $('#newProfFound').textContent = '';
+  if (p.baseUrl) newProfFinder();
+  else $('#newProfBaseUrl').focus();
 });
 
 $('#createProfileBtn').addEventListener('click', async () => {
   if (!latestLlmConfig) await loadHubData();
-  const rawKey = $('#newProfKey').value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
+  const slug = (v) => String(v || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
   const model = $('#newProfModel').value.trim();
   const baseUrl = $('#newProfBaseUrl').value.trim();
-  if (!rawKey) { showToast('Enter a Profile ID (e.g. openai, ollama, spark-high)'); return; }
-  if (!model || !baseUrl) { showToast('Model ID and Base URL are required.'); return; }
-
+  if (!model || !baseUrl) { showToast('Server URL and Model ID are required.'); return; }
   const profiles = structuredClone(latestLlmConfig?.profiles || {});
+  // Profile ID is optional: derive it from the label / provider / model, and never overwrite an existing one by accident
+  let rawKey = slug($('#newProfKey').value) || slug($('#newProfLabel').value) || slug($('#newProfPreset').value) || slug(model.split('/').pop()) || 'model';
+  if (!slug($('#newProfKey').value)) { const base = rawKey; let n = 2; while (profiles[rawKey]) rawKey = `${base}-${n++}`; }
+
   profiles[rawKey] = {
     label: $('#newProfLabel').value.trim() || rawKey,
     baseUrl,
@@ -2320,6 +2348,8 @@ $('#createProfileBtn').addEventListener('click', async () => {
   $('#newProfModel').value = '';
   $('#newProfBaseUrl').value = '';
   $('#newProfApiKey').value = '';
+  $('#newProfFound').textContent = '';
+  $('#newProfModelList').innerHTML = '';
   $('#newProfContextLength').value = '';
   $('#newProfEffort').value = '';
   showToast(`Created LLM profile "${rawKey}"${activate ? ' (now active)' : ''}`);
@@ -2395,7 +2425,7 @@ $('#testLlmBtn').addEventListener('click', async () => {
     }),
   }).then((r) => r.json());
   if (res.ok) {
-    out.textContent = `Connected (${res.latencyMs}ms${res.modelsCount != null ? `, ${res.modelsCount} models` : ''})`;
+    out.textContent = `✓ Connected (${res.latencyMs}ms${res.modelsCount != null ? `, ${res.modelsCount} model${res.modelsCount === 1 ? '' : 's'}` : ''})`;
   } else {
     out.textContent = `Failed: ${res.error || 'unreachable'}`;
   }

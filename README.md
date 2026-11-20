@@ -75,6 +75,8 @@ The installer:
 3. finds a local model server (Ollama, LM Studio, vLLM, llama.cpp) or asks for an API endpoint and lets you pick a model,
 4. starts Pond at **http://localhost:8787** (and adds a desktop shortcut on Windows).
 
+Didn't find your model, or want to add another one? → **[Connect your model](docs/setup-llm.md)** (step by step, with screenshots).
+
 **To update, run the same line again** — your `.env` and `data/` are never touched.
 Options: `POND_HOME` (install folder), `POND_NO_START=1`, `POND_NONINTERACTIVE=1`.
 
@@ -168,8 +170,8 @@ Most settings live in **Agent Hub** (⚙️ in the app). The basics are in `.env
 
 See [`.env.example`](.env.example) for everything (email, quiet hours, Sentinel, search…).
 
-**Model profiles** live in `data/llm.json` (or Agent Hub → LLM Engine): several endpoints, context length,
-reasoning effort, and `"inputTypes": ["text", "image"]` for vision models.
+**Model profiles** — Agent Hub → LLM Engine (guide: [docs/setup-llm.md](docs/setup-llm.md)), stored in `data/llm.json`:
+several endpoints, context length, reasoning effort, and `"inputTypes": ["text", "image"]` for vision models.
 
 **Email:** Agent Hub → Email. Use an *app password* for Gmail / iCloud / Yahoo, or connect Microsoft 365.
 

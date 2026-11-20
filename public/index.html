@@ -262,27 +262,35 @@
             <div id="newProfilePanel" class="hub-card" hidden>
               <div class="card-top"><span>Create New LLM Profile</span><button id="cancelNewProfileBtn" type="button" class="link-btn">cancel</button></div>
               <div class="two-col">
-                <label>Profile ID (e.g. openai, ollama, spark-high)
-                  <input type="text" id="newProfKey" placeholder="e.g. openai-high" />
-                </label>
-                <label>Provider Preset (optional)
+                <label>Provider
                   <select id="newProfPreset">
-                    <option value="">Custom OpenAI-compatible</option>
-                    <option value="openai">OpenAI (api.openai.com)</option>
-                    <option value="openrouter">OpenRouter (openrouter.ai)</option>
-                    <option value="deepseek">DeepSeek (api.deepseek.com)</option>
-                    <option value="ollama">Ollama (localhost:11434)</option>
-                    <option value="lmstudio">LM Studio (localhost:1234)</option>
+                    <option value="">Choose…</option>
+                    <optgroup label="On your computer / network">
+                      <option value="ollama">Ollama</option>
+                      <option value="lmstudio">LM Studio</option>
+                      <option value="vllm">vLLM</option>
+                      <option value="sglang">SGLang</option>
+                      <option value="llamacpp">llama.cpp server</option>
+                    </optgroup>
+                    <optgroup label="Cloud">
+                      <option value="openai">OpenAI</option>
+                      <option value="openrouter">OpenRouter</option>
+                      <option value="deepseek">DeepSeek</option>
+                    </optgroup>
+                    <option value="custom">Other (OpenAI-compatible)</option>
                   </select>
                 </label>
+                <label>Profile ID (optional)
+                  <input type="text" id="newProfKey" placeholder="auto from the label" />
+                </label>
               </div>
               <div class="two-col">
-                <label>Display Label<input type="text" id="newProfLabel" placeholder="e.g. OpenAI GPT-5 High" /></label>
-                <label>Model ID<input type="text" id="newProfModel" placeholder="e.g. gpt-5-mini" /></label>
+                <label>Display Label<input type="text" id="newProfLabel" placeholder="e.g. My GPU server" /></label>
+                <label>Model ID<input type="text" id="newProfModel" list="newProfModelList" placeholder="pick from the list or type it" /><datalist id="newProfModelList"></datalist></label>
               </div>
               <div class="two-col">
-                <label>Base URL<input type="text" id="newProfBaseUrl" placeholder="https://api.openai.com/v1" /></label>
-                <label>API Key (or $ENV_VAR)<input type="text" id="newProfApiKey" placeholder="$OPENAI_API_KEY or sk-..." /></label>
+                <label>Server URL<input type="text" id="newProfBaseUrl" placeholder="http://localhost:11434/v1" /><small class="field-hint" id="newProfFound"></small></label>
+                <label>API Key<input type="text" id="newProfApiKey" placeholder="not needed for local servers" autocomplete="off" /><small class="field-hint">Only for cloud services. Advanced: <code>$NAME</code> reads it from an environment variable.</small></label>
               </div>
               <div class="two-col">
                 <label>Context Length (tokens)
@@ -321,11 +329,11 @@
             </div>
             <div class="two-col">
               <label>Display Label<input type="text" id="llmLabel" placeholder="Default" /></label>
-              <label>Model ID<input type="text" id="llmModel" placeholder="gpt-5-mini / deepseek-chat / llama3.1" /></label>
+              <label>Model ID<input type="text" id="llmModel" list="llmModelList" placeholder="pick from the list or type it" /><datalist id="llmModelList"></datalist></label>
             </div>
             <div class="two-col">
-              <label>Base URL<input type="text" id="llmBaseUrl" placeholder="https://api.openai.com/v1" /></label>
-              <label>API Key (or $ENV_VAR like $OPENAI_API_KEY)<input type="text" id="llmApiKey" placeholder="$OPENAI_API_KEY" /></label>
+              <label>Server URL<input type="text" id="llmBaseUrl" placeholder="http://localhost:11434/v1" /><small class="field-hint" id="llmFound"></small></label>
+              <label>API Key<input type="text" id="llmApiKey" placeholder="not needed for local servers" autocomplete="off" /><small class="field-hint">Only for cloud services. Advanced: <code>$NAME</code> reads it from an environment variable.</small></label>
             </div>
             <div class="two-col">
               <label>Context Length (tokens)
