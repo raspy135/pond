@@ -56,7 +56,7 @@ const LOCAL = [
 
 function applyConfig({ baseUrl, apiKey, model, location }) {
   if (baseUrl) setEnv('OPENAI_BASE_URL', baseUrl.replace(/\/+$/, ''));
-  if (apiKey !== undefined) setEnv('OPENAI_API_KEY', apiKey || 'local-no-key'); // local servers ignore it, Pond just needs one
+  if (apiKey !== undefined) setEnv('OPENAI_API_KEY', apiKey || ''); // empty is fine for local servers
   if (model) setEnv('MODEL', model);
   if (location) setEnv('USER_LOCATION', location);
   save();
@@ -74,57 +74,91 @@ if (!interactive) {
 }
 
 // ---------- interactive ----------
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-const ask = async (q, def = '') => ((await rl.question(def ? `${q} ${C.d(`[${def}]`)} ` : `${q} `)).trim() || def);
-async function askSecret(q) {
-  if (!process.stdin.isTTY) return ask(q);
-  process.stdout.write(`${q} `);
-  const muted = rl._writeToOutput;
-  rl._writeToOutput = (s) => { if (s.includes('\n') || s.includes('\r')) muted.call(rl, '\n'); else muted.call(rl, '*'.repeat(s.length)); };
-  const v = await rl.question('');
-  rl._writeToOutput = muted;
-  return v.trim();
+// One short-lived readline per question, so hidden input can take over stdin cleanly in between.
+async function ask(q, def = '') {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try { return ((await rl.question(def ? `${q} ${C.d(`[${def}]`)} ` : `${q} `)).trim() || def); } finally { rl.close(); }
+}
+// Hidden input (API keys): raw mode, prints * per character. Falls back to a normal prompt without a terminal.
+function askSecret(q) {
+  if (!process.stdin.isTTY || typeof process.stdin.setRawMode !== 'function') return ask(q);
+  return new Promise((resolve) => {
+    process.stdout.write(`${q} `);
+    const stdin = process.stdin;
+    let value = '';
+    stdin.setRawMode(true); stdin.resume(); stdin.setEncoding('utf8');
+    const done = (v) => { stdin.removeListener('data', onData); stdin.setRawMode(false); stdin.pause(); process.stdout.write('\n'); resolve(v.trim()); };
+    const onData = (chunk) => {
+      for (const ch of chunk) {
+        if (ch === '\r' || ch === '\n') return done(value);
+        if (ch === '\u0003') { process.stdout.write('\n'); process.exit(130); }        // Ctrl+C
+        if (ch === '\u007f' || ch === '\b') { if (value) { value = value.slice(0, -1); process.stdout.write('\b \b'); } continue; }
+        if (ch === '\u0015') { process.stdout.write('\b \b'.repeat(value.length)); value = ''; continue; } // Ctrl+U
+        if (ch < ' ') continue;
+        value += ch; process.stdout.write('*');
+      }
+    };
+    stdin.on('data', onData);
+  });
 }
 
 console.log(`\n${C.c('◉ Pond setup')} — connect a model (any OpenAI-compatible endpoint works)\n`);
 const curBase = getEnv('OPENAI_BASE_URL');
 const curKey = getEnv('OPENAI_API_KEY');
 const curModel = getEnv('MODEL');
-if (curKey && !curKey.startsWith('sk-your')) {
+const CLOUD = /(^|\.)(openai\.com|openrouter\.ai|deepseek\.com|anthropic\.com|googleapis\.com|groq\.com|together\.(ai|xyz)|mistral\.ai|fireworks\.ai|x\.ai|cerebras\.ai)$/i;
+const isCloud = (u) => { try { return CLOUD.test(new URL(u).hostname); } catch { return false; } };
+const hasKey = curKey && !curKey.startsWith('sk-your');
+if (curBase && curModel && (hasKey || !isCloud(curBase))) {
   const keep = (await ask(`Current: ${C.c(curModel)} at ${C.c(curBase)}. Keep it? (Y/n)`, 'Y')).toLowerCase();
-  if (keep !== 'n') { rl.close(); console.log(C.g('✓ Keeping current model settings')); process.exit(0); }
+  if (keep !== 'n') { console.log(C.g('✓ Keeping current model settings')); process.exit(0); }
 }
 
 process.stdout.write(C.d('Looking for local model servers… '));
 const found = [];
-await Promise.all(LOCAL.map(async ([name, url]) => { const r = await listModels(url); if (r.ok) found.push({ name, url, models: r.models }); }));
+await Promise.all(LOCAL.map(async ([name, url]) => {
+  const r = await listModels(url);
+  if (r.ok) found.push({ name, url, models: r.models });
+  else if (r.status === 401 || r.status === 403) found.push({ name, url, locked: true }); // running, but wants a key
+}));
 console.log(found.length ? C.g(`found ${found.map((f) => f.name).join(', ')}`) : 'none running');
 
 const choices = [
-  ...found.map((f) => ({ label: `${f.name} at ${f.url} (${f.models.length} model${f.models.length === 1 ? '' : 's'})`, baseUrl: f.url, local: true, models: f.models })),
+  ...found.map((f) => ({ label: `${f.name} at ${f.url} ${f.locked ? C.y('(needs API key)') : `(${f.models.length} model${f.models.length === 1 ? '' : 's'})`}`, baseUrl: f.url, local: true, locked: f.locked, models: f.models })),
   { label: 'OpenAI (api.openai.com)', baseUrl: 'https://api.openai.com/v1', needsKey: true },
-  { label: 'Other OpenAI-compatible endpoint (OpenRouter, DeepSeek, your own server…)', custom: true },
+  { label: 'Another server or cloud API (a GPU box on your network, OpenRouter, DeepSeek…)', custom: true },
   { label: 'Skip for now (configure later in Agent Hub → LLM Engine)', skip: true },
 ];
 choices.forEach((c, i) => console.log(`  ${C.c(String(i + 1))}) ${c.label}`));
 const pick = choices[Math.max(0, Math.min(choices.length - 1, Number(await ask('Choose', '1')) - 1))];
-if (pick.skip) { rl.close(); console.log(C.y('Skipped. Pond will start, but needs a model before it can chat.')); process.exit(0); }
+if (pick.skip) { console.log(C.y('Skipped. Pond will start, but needs a model before it can chat.')); process.exit(0); }
 
 let baseUrl = pick.baseUrl;
-let apiKey = '';
 if (pick.custom) {
-  baseUrl = await ask('Base URL (ends in /v1):', 'https://openrouter.ai/api/v1');
-  apiKey = await askSecret('API key (blank if none):');
-} else if (pick.needsKey) {
-  apiKey = await askSecret('OpenAI API key:');
+  while (!baseUrl) baseUrl = (await ask('Server URL (e.g. http://192.168.1.50:8000/v1 or https://openrouter.ai/api/v1):', '')).replace(/\/+$/, '');
+  if (baseUrl && !/^https?:\/\//i.test(baseUrl)) baseUrl = `http://${baseUrl}`;
+  if (baseUrl && !/\/v\d+$/.test(baseUrl)) { const r = await listModels(`${baseUrl}/v1`); if (r.ok || r.status === 401 || r.status === 403) baseUrl = `${baseUrl}/v1`; }
 }
 
+// API key: always asked. Required when the server says so (401/403) or it's a cloud API; optional otherwise.
+let apiKey = '';
 let models = pick.models;
-if (!models) {
+const probe = pick.locked ? { ok: false, status: 401 } : (models ? { ok: true, models } : await listModels(baseUrl));
+const keyRequired = pick.locked || pick.needsKey || isCloud(baseUrl) || probe.status === 401 || probe.status === 403;
+if (probe.ok) models = probe.models;
+for (let attempt = 0; attempt < 3; attempt++) {
+  apiKey = await askSecret(keyRequired ? 'API key (this server needs one):' : 'API key (press Enter if your server doesn\'t use one):');
+  if (!apiKey) {
+    if (keyRequired) console.log(C.y('  No key — Pond won\'t be able to use this server until you add one (Agent Hub → LLM Engine).'));
+    break;
+  }
   const r = await listModels(baseUrl, apiKey);
-  if (r.ok) models = r.models;
-  else console.log(C.y(`Couldn't list models (${r.status || r.error}). You can type the model name.`));
+  if (r.ok) { models = r.models; console.log(C.g(`  ✓ Key works${r.models.length ? ` — ${r.models.length} model${r.models.length === 1 ? '' : 's'} available` : ''}`)); break; }
+  if (r.status === 401 || r.status === 403) { console.log(C.y(`  That key was rejected (HTTP ${r.status}). Try again, or press Enter to skip.`)); continue; }
+  console.log(C.y(`  Couldn't check the key (${r.status ? `HTTP ${r.status}` : r.error}) — keeping it.`));
+  break;
 }
+if (!models && !probe.ok && !keyRequired) console.log(C.y(`Couldn't list models (${probe.status || probe.error}). You can type the model name.`));
 let model = '';
 if (models?.length) {
   const shown = models.slice(0, 15);
@@ -133,10 +167,9 @@ if (models?.length) {
   const ans = await ask('Model (number or name):', '1');
   model = /^\d+$/.test(ans) ? shown[Number(ans) - 1] || shown[0] : ans;
 } else {
-  model = await ask('Model name:', pick.needsKey ? 'gpt-4o-mini' : '');
+  model = await ask('Model name:', pick.needsKey ? 'gpt-5-mini' : '');
 }
 const location = await ask('Your city, for local suggestions (Enter to skip):', '');
-rl.close();
 
 applyConfig({ baseUrl, apiKey, model, location });
 console.log(`\n${C.g('✓ Saved to .env')}: ${C.c(model)} at ${C.c(baseUrl)}${location ? ` · ${location}` : ''}`);
