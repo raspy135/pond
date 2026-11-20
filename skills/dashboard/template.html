@@ -1,0 +1,310 @@
+<!-- height: 760 -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard title</title>
+<style>
+/* ---- Pond design tokens (same as the app). Light by default; dark via Pond's theme or the OS. ---- */
+:root {
+  --bg: #f4f4f8; --panel: #ffffff; --panel-2: #ececf2; --border: #dcdce6;
+  --text: #1c1c28; --text-soft: #4a4a5e; --muted: #6e6e82;
+  --accent: #6d4de0; --accent-soft: rgba(109, 77, 224, .12);
+  --ok: #0f9d63; --warn: #d97706; --danger: #d64545; --grid: rgba(28, 28, 40, .07);
+  /* series palette: accent first, then cool → warm; never more than 6 */
+  --c1: #6d4de0; --c2: #22a9d6; --c3: #14a38f; --c4: #e39b16; --c5: #e0609e; --c6: #8e8ea4;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f0f14; --panel: #17171f; --panel-2: #1f1f2a; --border: #2a2a36;
+    --text: #ececf4; --text-soft: #c9c9dd; --muted: #8e8ea4;
+    --accent: #8b7cf8; --accent-soft: rgba(139, 124, 248, .16);
+    --ok: #3ddc97; --warn: #f59e0b; --danger: #ff6b6b; --grid: rgba(236, 236, 244, .07);
+    --c1: #8b7cf8; --c2: #3ec6ee; --c3: #2fd1b3; --c4: #f5b03c; --c5: #f07ab6; --c6: #8e8ea4;
+    color-scheme: dark;
+  }
+}
+[data-theme="dark"] {
+  --bg: #0f0f14; --panel: #17171f; --panel-2: #1f1f2a; --border: #2a2a36;
+  --text: #ececf4; --text-soft: #c9c9dd; --muted: #8e8ea4;
+  --accent: #8b7cf8; --accent-soft: rgba(139, 124, 248, .16);
+  --ok: #3ddc97; --warn: #f59e0b; --danger: #ff6b6b; --grid: rgba(236, 236, 244, .07);
+  --c1: #8b7cf8; --c2: #3ec6ee; --c3: #2fd1b3; --c4: #f5b03c; --c5: #f07ab6; --c6: #8e8ea4;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; margin: 0; }
+body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); padding: 16px; font-size: 14px; line-height: 1.45; }
+.dash { max-width: 1100px; margin: 0 auto; display: grid; gap: 12px; }
+header { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; padding: 2px 2px 4px; }
+h1 { font-size: 1.15rem; font-weight: 600; letter-spacing: -.01em; }
+.sub { color: var(--muted); font-size: .8rem; }
+.grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; min-width: 0; }
+.card h2 { font-size: .78rem; font-weight: 600; color: var(--muted); margin-bottom: 10px; }
+.span-2 { grid-column: span 2; } .span-all { grid-column: 1 / -1; }
+@media (max-width: 560px) { .span-2 { grid-column: auto; } body { padding: 10px; } }
+.kpi .v { font-size: 1.7rem; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -.02em; line-height: 1.15; }
+.kpi .d { font-size: .78rem; margin-top: 3px; color: var(--muted); }
+.up { color: var(--ok); } .down { color: var(--danger); } .flat { color: var(--muted); }
+.spark { display: block; width: 100%; height: 34px; margin-top: 8px; }
+.chart { width: 100%; height: 190px; }
+.chart svg, .spark { overflow: visible; }
+.chart text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: .76rem; color: var(--text-soft); margin-top: 8px; }
+.legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 0; }
+.pill { display: inline-block; font-size: .7rem; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.pill.ok { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+.pill.warn { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
+.pill.bad { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+table.t { width: 100%; border-collapse: collapse; font-size: .84rem; }
+table.t th { color: var(--muted); font-weight: 600; text-align: left; font-size: .74rem; padding: 0 6px 6px; border-bottom: 1px solid var(--border); }
+table.t td { padding: 7px 6px; border-bottom: 1px solid var(--border); }
+table.t tr:last-child td { border-bottom: 0; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* ---- Motion: entrance once, subtle life always. Disabled for reduced-motion users. ---- */
+.card { animation: rise .55s cubic-bezier(.2, .8, .2, 1) both; transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+.card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); box-shadow: 0 8px 24px -12px rgba(0,0,0,.25); }
+@keyframes rise { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
+.draw { stroke-dasharray: var(--len); stroke-dashoffset: var(--len); animation: draw 1.1s cubic-bezier(.4, 0, .2, 1) forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+.fade { opacity: 0; animation: fadeIn .9s ease .35s forwards; }
+@keyframes fadeIn { to { opacity: var(--o, 1); } }
+.grow { transform-box: fill-box; transform-origin: 50% 100%; animation: growY .7s cubic-bezier(.2, .8, .2, 1) both; }
+.grow-x { transform-box: fill-box; transform-origin: 0 50%; animation: growX .7s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes growY { from { transform: scaleY(0); } } @keyframes growX { from { transform: scaleX(0); } }
+.sweep { transform-box: fill-box; transform-origin: center; animation: sweep .9s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes sweep { from { transform: rotate(-90deg) scale(.82); opacity: 0; } }
+.live { display: inline-flex; align-items: center; gap: 6px; font-size: .74rem; color: var(--muted); }
+.live::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 60%, transparent); animation: pulse 2s infinite; }
+@keyframes pulse { 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+@media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } .draw { stroke-dashoffset: 0; } .fade { opacity: var(--o, 1); } }
+.tip { position: fixed; pointer-events: none; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; font-size: .74rem; box-shadow: 0 4px 16px rgba(0,0,0,.12); opacity: 0; transition: opacity .1s; z-index: 9; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div class="dash">
+  <header>
+    <div><h1>Dashboard title</h1><div class="sub">Updated just now · source name</div></div>
+    <div style="display:flex;gap:10px;align-items:center"><span class="live">Live</span><span class="pill ok">All systems normal</span></div>
+  </header>
+
+  <section class="grid">
+    <div class="card kpi"><h2>Primary metric</h2><div class="v" data-count="12480">12,480</div><div class="d"><span class="up">▲ 8.2%</span> vs last week</div><svg class="spark" data-spark="31,34,33,38,36,41,44"></svg></div>
+    <div class="card kpi"><h2>Secondary metric</h2><div class="v" data-count="3.4" data-decimals="1" data-suffix="s">3.4s</div><div class="d"><span class="down">▼ 0.6s</span> faster</div><svg class="spark" data-spark="5.1,4.8,4.6,4.0,4.2,3.7,3.4" data-color="--c2"></svg></div>
+    <div class="card kpi"><h2>Ratio</h2><div class="v" data-count="96" data-suffix="%">96%</div><div class="d"><span class="flat">— 0.0%</span> unchanged</div><svg class="spark" data-spark="95,96,96,95,96,96,96" data-color="--c3"></svg></div>
+
+    <div class="card span-2"><h2>Trend</h2><div class="chart" id="trend"></div></div>
+    <div class="card"><h2>Mix</h2><div class="chart" id="mix"></div></div>
+    <div class="card span-2"><h2>By category</h2><div class="chart" id="bars"></div></div>
+    <div class="card">
+      <h2>Top items</h2>
+      <table class="t">
+        <tr><th>Name</th><th class="num">Value</th></tr>
+        <tr><td>Alpha</td><td class="num">1,204</td></tr>
+        <tr><td>Beta</td><td class="num">982</td></tr>
+        <tr><td>Gamma</td><td class="num">640</td></tr>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+// PondCharts — tiny dependency-free SVG charts that follow the theme tokens above.
+// Use these for every 2D chart so all Pond dashboards look the same. Re-renders on resize and theme change.
+const PondCharts = (() => {
+  const NS = 'http://www.w3.org/2000/svg';
+  const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  const series = (i) => css(`--c${(i % 6) + 1}`);
+  const fmt = (n) => Math.abs(n) >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : Math.abs(n) >= 1e4 ? (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'k' : (Math.round(n * 100) / 100).toLocaleString();
+  const node = (tag, attrs = {}, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+  const niceNum = (v) => { if (v <= 0) return 1; const p = 10 ** Math.floor(Math.log10(v)); const n = v / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p; };
+  // Round axis: step is 1/2/5×10^n, 3–6 ticks, max is a multiple of the step (no 37.5-style labels).
+  const niceScale = (raw) => { const step = niceNum((raw || 1) / 4); const ticks = Math.max(1, Math.ceil((raw || 1) / step)); return { max: step * ticks, ticks }; };
+  const $ = (t) => (typeof t === 'string' ? document.querySelector(t) : t);
+  let tip;
+  const showTip = (e, html) => { tip ||= Object.assign(document.body.appendChild(document.createElement('div')), { className: 'tip' }); tip.innerHTML = html; tip.style.left = Math.min(e.clientX + 12, innerWidth - tip.offsetWidth - 8) + 'px'; tip.style.top = (e.clientY - 34) + 'px'; tip.style.opacity = 1; };
+  const hideTip = () => { if (tip) tip.style.opacity = 0; };
+  const registry = [];
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let animating = !reduce;                       // entrance animations only on the first render
+  // Redraw a chart whenever its own box changes size (scrollbars, grid reflow, iframe resize), not just on window resize.
+  const sizes = new WeakMap();
+  const ro = new ResizeObserver((entries) => {
+    for (const en of entries) {
+      const prev = sizes.get(en.target), w = Math.round(en.contentRect.width), h = Math.round(en.contentRect.height);
+      if (prev && (prev.w !== w || prev.h !== h)) en.target.__redraw?.();
+      sizes.set(en.target, { w, h });
+    }
+  });
+  const register = (fn, el) => { registry.push(fn); fn(); if (el) { el.__redraw = fn; ro.observe(el); } };
+  const drawIn = (path) => { if (!animating) return; const len = Math.ceil(path.getTotalLength()); path.style.setProperty('--len', len); path.classList.add('draw'); };
+  function frame(el) {
+    el.innerHTML = '';
+    const w = el.clientWidth || 300, h = el.clientHeight || 190;
+    const svg = node('svg', { width: w, height: h, viewBox: `0 0 ${w} ${h}` }, el);
+    return { svg, w, h };
+  }
+  function axes(svg, w, h, pad, scale, labels, yFormat) {
+    const { max, ticks } = scale;
+    for (let i = 0; i <= ticks; i++) {
+      const y = pad.t + (h - pad.t - pad.b) * (1 - i / ticks);
+      node('line', { x1: pad.l, x2: w - pad.r, y1: y, y2: y, stroke: i === 0 ? css('--border') : css('--grid'), 'stroke-width': 1 }, svg);
+      node('text', { x: pad.l - 8, y: y + 4, 'text-anchor': 'end' }, svg).textContent = (yFormat || fmt)(max * i / ticks);
+    }
+    const every = Math.ceil(labels.length / Math.max(2, Math.floor((w - pad.l - pad.r) / 56)));
+    labels.forEach((lb, i) => {
+      if (i % every) return;
+      const x = labels.length === 1 ? (pad.l + w - pad.r) / 2 : pad.l + (w - pad.l - pad.r) * (i / (labels.length - 1));
+      node('text', { x, y: h - 6, 'text-anchor': 'middle' }, svg).textContent = lb;
+    });
+  }
+  function legend(el, names) {
+    if (el.nextElementSibling?.classList.contains('legend')) el.nextElementSibling.remove();
+    if (names.length < 2) return;
+    const lg = document.createElement('div'); lg.className = 'legend';
+    lg.innerHTML = names.map((n, i) => `<span><i style="background:${series(i)}"></i>${n}</span>`).join('');
+    el.after(lg);
+  }
+  // line / area: { labels: [...], series: [{ name, values: [...] }], area: true, yFormat: (v) => '' }
+  function line(target, opt) {
+    const el = $(target);
+    register(() => {
+      const { svg, w, h } = frame(el);
+      const pad = { t: 10, r: 14, b: 24, l: 40 };
+      const all = opt.series.flatMap((s) => s.values);
+      const scale = niceScale(Math.max(...all) * 1.02), max = scale.max;
+      axes(svg, w, h, pad, scale, opt.labels, opt.yFormat);
+      const X = (i) => pad.l + (w - pad.l - pad.r) * (opt.labels.length === 1 ? .5 : i / (opt.labels.length - 1));
+      const Y = (v) => pad.t + (h - pad.t - pad.b) * (1 - v / max);
+      opt.series.forEach((s, si) => {
+        const c = series(si);
+        const d = s.values.map((v, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join('');
+        if (opt.area && si === 0) { const a = node('path', { d: `${d}L${X(s.values.length - 1)},${Y(0)}L${X(0)},${Y(0)}Z`, fill: c, opacity: .12, style: '--o:.12' }, svg); if (animating) a.classList.add('fade'); }
+        drawIn(node('path', { d, fill: 'none', stroke: c, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, svg));
+        const li = s.values.length - 1;
+        const dot = node('circle', { cx: X(li), cy: Y(s.values[li]), r: 3.5, fill: c, stroke: css('--panel'), 'stroke-width': 2 }, svg);
+        if (animating) dot.classList.add('fade');
+      });
+      const hover = node('line', { y1: pad.t, y2: h - pad.b, stroke: css('--border'), 'stroke-width': 1, opacity: 0 }, svg);
+      const hit = node('rect', { x: pad.l, y: pad.t, width: w - pad.l - pad.r, height: h - pad.t - pad.b, fill: 'transparent' }, svg);
+      hit.addEventListener('mousemove', (e) => {
+        const r = svg.getBoundingClientRect();
+        const i = Math.max(0, Math.min(opt.labels.length - 1, Math.round(((e.clientX - r.left - pad.l) / (w - pad.l - pad.r)) * (opt.labels.length - 1))));
+        hover.setAttribute('x1', X(i)); hover.setAttribute('x2', X(i)); hover.setAttribute('opacity', 1);
+        showTip(e, `<b>${opt.labels[i]}</b><br>` + opt.series.map((s, si) => `<span style="color:${series(si)}">●</span> ${s.name || ''} ${(opt.yFormat || fmt)(s.values[i])}`).join('<br>'));
+      });
+      hit.addEventListener('mouseleave', () => { hover.setAttribute('opacity', 0); hideTip(); });
+      legend(el, opt.series.map((s) => s.name || ''));
+    }, el);
+  }
+  // bar: { labels, values } or { labels, series:[{name, values}] } (grouped); horizontal: true for long labels
+  function bar(target, opt) {
+    const el = $(target);
+    register(() => {
+      const ser = opt.series || [{ name: '', values: opt.values }];
+      if (opt.horizontal) {
+        const { svg, w, h } = frame(el);
+        const vals = ser[0].values, max = Math.max(...vals) || 1;
+        const lw = Math.min(140, Math.max(...opt.labels.map((l) => String(l).length)) * 7 + 8), rowH = (h - 4) / vals.length;
+        vals.forEach((v, i) => {
+          const y = 2 + i * rowH, bw = Math.max(2, (w - lw - 44) * v / max), bh = Math.min(18, rowH * .62);
+          node('text', { x: lw - 8, y: y + rowH / 2 + 4, 'text-anchor': 'end' }, svg).textContent = opt.labels[i];
+          const hb = node('rect', { x: lw, y: y + (rowH - bh) / 2, width: bw, height: bh, rx: 4, fill: series(opt.colorIndex || 0) }, svg);
+          if (animating) { hb.classList.add('grow-x'); hb.style.animationDelay = `${i * 45}ms`; }
+          node('text', { x: lw + bw + 6, y: y + rowH / 2 + 4 }, svg).textContent = (opt.yFormat || fmt)(v);
+        });
+        return;
+      }
+      const { svg, w, h } = frame(el);
+      const pad = { t: 10, r: 8, b: 24, l: 40 };
+      const scale = niceScale(Math.max(...ser.flatMap((s) => s.values)) * 1.02), max = scale.max;
+      const n = opt.labels.length, slot = (w - pad.l - pad.r) / n, inner = slot * .68, bw = inner / ser.length;
+      for (let i = 0; i <= scale.ticks; i++) {
+        const y = pad.t + (h - pad.t - pad.b) * (1 - i / scale.ticks);
+        node('line', { x1: pad.l, x2: w - pad.r, y1: y, y2: y, stroke: i === 0 ? css('--border') : css('--grid') }, svg);
+        node('text', { x: pad.l - 8, y: y + 4, 'text-anchor': 'end' }, svg).textContent = (opt.yFormat || fmt)(max * i / scale.ticks);
+      }
+      opt.labels.forEach((lb, i) => {
+        const x0 = pad.l + slot * i + (slot - inner) / 2;
+        ser.forEach((s, si) => {
+          const v = s.values[i], bh = (h - pad.t - pad.b) * v / max;
+          const r = node('rect', { x: x0 + si * bw + 1, y: h - pad.b - bh, width: Math.max(1, bw - 2), height: bh, rx: Math.min(4, bw / 3), fill: series(ser.length > 1 ? si : (opt.colorIndex || 0)) }, svg);
+          if (animating) { r.classList.add('grow'); r.style.animationDelay = `${i * 45 + si * 20}ms`; }
+          r.addEventListener('mousemove', (e) => showTip(e, `<b>${lb}</b> ${s.name || ''} ${(opt.yFormat || fmt)(v)}`));
+          r.addEventListener('mouseleave', hideTip);
+        });
+        node('text', { x: pad.l + slot * (i + .5), y: h - 6, 'text-anchor': 'middle' }, svg).textContent = lb;
+      });
+      legend(el, ser.map((s) => s.name || ''));
+    }, el);
+  }
+  // donut: { items: [{ label, value }], center: 'Total' }  (≤ 6 items; group the rest as "Other")
+  function donut(target, opt) {
+    const el = $(target);
+    register(() => {
+      const { svg, w, h } = frame(el);
+      const total = opt.items.reduce((a, b) => a + b.value, 0) || 1;
+      const R = Math.min(w, h) / 2 - 6, r = R * .64, cx = w / 2, cy = h / 2;
+      let a0 = -Math.PI / 2;
+      const ring = node('g', {}, svg);
+      if (animating) ring.classList.add('sweep');
+      opt.items.forEach((it, i) => {
+        const a1 = a0 + (it.value / total) * Math.PI * 2, gap = opt.items.length > 1 ? .012 : 0;
+        const p = (rad, a) => `${cx + rad * Math.cos(a)},${cy + rad * Math.sin(a)}`;
+        const large = a1 - a0 > Math.PI ? 1 : 0;
+        const seg = node('path', { d: `M${p(R, a0 + gap)}A${R},${R} 0 ${large} 1 ${p(R, a1 - gap)}L${p(r, a1 - gap)}A${r},${r} 0 ${large} 0 ${p(r, a0 + gap)}Z`, fill: series(i) }, ring);
+        seg.addEventListener('mousemove', (e) => showTip(e, `<b>${it.label}</b> ${fmt(it.value)} · ${Math.round(it.value / total * 100)}%`));
+        seg.addEventListener('mouseleave', hideTip);
+        a0 = a1;
+      });
+      node('text', { x: cx, y: cy + 2, 'text-anchor': 'middle', style: `font-size:18px;font-weight:650;fill:${css('--text')}` }, svg).textContent = fmt(total);
+      node('text', { x: cx, y: cy + 18, 'text-anchor': 'middle' }, svg).textContent = opt.center || 'Total';
+      legend(el, opt.items.map((it) => it.label));
+    }, el);
+  }
+  // sparkline: <svg class="spark" data-spark="1,3,2,5" data-color="--c2"></svg>
+  function sparks() {
+    document.querySelectorAll('svg.spark[data-spark]').forEach((s) => register(() => {
+      const v = s.dataset.spark.split(',').map(Number), w = s.clientWidth || 200, h = s.clientHeight || 34;
+      const lo = Math.min(...v), hi = Math.max(...v), pad = Math.max(0, (Math.abs(hi) * .12 - (hi - lo)) / 2);
+      const min = lo - pad, rng = (hi - lo) + pad * 2 || 1, c = css(s.dataset.color || '--c1');
+      const pts = v.map((x, i) => `${(i / (v.length - 1)) * (w - 4) + 2},${h - 3 - ((x - min) / rng) * (h - 6)}`);
+      s.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      s.innerHTML = `<path class="${animating ? 'fade' : ''}" style="--o:.12" d="M${pts.join('L')}L${w - 2},${h}L2,${h}Z" fill="${c}" opacity=".12"/><path d="M${pts.join('L')}" fill="none" stroke="${c}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>`;
+      drawIn(s.lastChild);
+    }, s));
+  }
+  // KPI count-up: <div class="v" data-count="12480" data-decimals="0" data-prefix="$" data-suffix="%">
+  function countUp() {
+    document.querySelectorAll('[data-count]').forEach((el) => {
+      const end = Number(el.dataset.count), dec = Number(el.dataset.decimals || 0), pre = el.dataset.prefix || '', suf = el.dataset.suffix || '';
+      const show = (v) => { el.textContent = pre + v.toLocaleString(undefined, { minimumFractionDigits: dec, maximumFractionDigits: dec }) + suf; };
+      if (!animating) return show(end);
+      const t0 = performance.now(), dur = 1100;
+      const step = (now) => { const k = Math.min(1, (now - t0) / dur), e = 1 - (1 - k) ** 3; show(end * e); if (k < 1) requestAnimationFrame(step); };
+      requestAnimationFrame(step);
+    });
+  }
+  // Stagger the card entrance
+  document.querySelectorAll('.card').forEach((c, i) => { c.style.animationDelay = `${i * 60}ms`; });
+  addEventListener('load', () => setTimeout(() => { animating = false; }, 50)); // later re-renders (resize/theme) don't replay
+  let t;
+  const rerender = () => { clearTimeout(t); t = setTimeout(() => registry.forEach((f) => f()), 60); };
+  addEventListener('resize', rerender);
+  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', rerender);
+  new MutationObserver(rerender).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  return { line, bar, donut, sparks, countUp, color: series, fmt };
+})();
+
+// ---- Example data: replace with real values ----
+PondCharts.sparks();
+PondCharts.countUp();
+PondCharts.line('#trend', { labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], area: true,
+  series: [{ name: 'This week', values: [31, 34, 33, 38, 36, 41, 44] }, { name: 'Last week', values: [28, 30, 31, 30, 33, 35, 37] }] });
+PondCharts.donut('#mix', { center: 'Total', items: [{ label: 'Direct', value: 42 }, { label: 'Search', value: 31 }, { label: 'Social', value: 17 }, { label: 'Other', value: 10 }] });
+PondCharts.bar('#bars', { labels: ['A', 'B', 'C', 'D', 'E', 'F'], values: [120, 98, 86, 64, 51, 33] });
+</script>
+</body>
+</html>

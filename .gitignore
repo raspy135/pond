@@ -1,0 +1,10 @@
+node_modules/
+.env
+data/
+*.log
+.backup-pre-sync-fix/
+
+# local helper files (never publish)
+asar-search-files.txt
+test/asar-*
+test/asar-search-files.txt

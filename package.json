@@ -1,0 +1,18 @@
+{
+  "name": "pond",
+  "version": "0.2.0",
+  "description": "Pond - an open-source, always-on proactive personal AI agent server (Muse/Dots-style) for daily life management, email triage, agenda, events, and browser notifications.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "check": "node --check server.js && node --check lib/config.js && node --check lib/llm-config.js && node --check lib/storage.js && node --check lib/notifications.js && node --check lib/turns.js && node --check lib/sentinel.js && node --check lib/email.js && node --check lib/ms365.js && node --check lib/calendar.js && node --check lib/python.js && node --check lib/mcp.js && node --check lib/watchers.js && node --check lib/web.js && node --check lib/tools.js && node --check lib/llm.js && node --check lib/scheduler.js && node --check lib/proactive.js && node --check lib/push.js && node --check lib/skills.js && node --check lib/plugins.js && node --check lib/htmlcache.js && node --check lib/share.js",
+    "test": "node test/agent-server.test.mjs",
+    "rebuild": "npm run check && node server.js"
+  },
+  "dependencies": {}
+}

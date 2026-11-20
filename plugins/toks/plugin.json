@@ -1,0 +1,14 @@
+{
+  "id": "toks",
+  "name": "Tokens per second",
+  "version": "1.0.0",
+  "description": "Shows generation speed (tok/s), time-to-first-token and prompt-cache hit rate under each reply, plus a running average in the sidebar.",
+  "author": "Pond",
+  "pondApi": 1,
+  "enabledByDefault": true,
+  "settings": [
+    { "key": "showCache", "label": "Show prompt-cache hit %", "type": "boolean", "default": true },
+    { "key": "showStatus", "label": "Show running average in sidebar", "type": "boolean", "default": true },
+    { "key": "includeBackground", "label": "Count background turns (heartbeat, routines) in the average", "type": "boolean", "default": false }
+  ]
+}

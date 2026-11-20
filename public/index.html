@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Pond — Your proactive AI agent</title>
+  <meta name="description" content="Pond — an open-source, always-on personal AI agent server. Aggressive proactive check-ins, email monitoring & AI triage, browser notifications, cron jobs, watchers, Sentinel approvals, and MCP." />
+  <meta name="theme-color" content="#ffffff" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Pond" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Sidebar -->
+    <aside id="sidebar">
+      <button id="newChatBtn" class="new-chat-btn"><span data-icon="plus" data-size="15"></span><span>New chat</span></button>
+
+      <div class="side-section">
+        <div class="side-title">Chats</div>
+        <div id="sessionList" class="session-list"><div class="empty">No chats yet</div></div>
+      </div>
+
+      <div class="side-section">
+        <div class="side-title">Agent Status <button id="compactBtn" class="link-btn" title="Compact older chat messages into a summary">compact</button></div>
+        <div class="status-row"><span class="dot-indicator" id="keyDot"></span><span id="keyStatus">Checking…</span></div>
+        <div class="status-row model" id="modelLine">—</div>
+        <div class="status-row model" id="contextLine">—</div>
+        <div class="status-row model" id="proactiveLine">—</div>
+        <div class="status-row model" id="emailStatusLine">—</div>
+        <div id="pluginStatus"></div>
+      </div>
+
+      <div class="side-section">
+        <div class="side-title">Agenda & Events <span class="count" id="eventCount"></span></div>
+        <div id="eventList" class="item-list"><div class="empty">No upcoming events</div></div>
+      </div>
+
+      <div class="side-section">
+        <div class="side-title">Things To Do <span class="count" id="taskCount"></span></div>
+        <div id="taskList" class="item-list"><div class="empty">Nothing on your list</div></div>
+      </div>
+
+      <div class="side-section">
+        <div class="side-title">Routines <span class="count" id="jobCount"></span></div>
+        <div id="sideJobList" class="item-list"><div class="empty">No recurring routines</div></div>
+      </div>
+
+      <div class="side-section">
+        <div class="side-title">Reminders <span class="count" id="reminderCount"></span></div>
+        <div id="reminderList" class="item-list"><div class="empty">No reminders</div></div>
+      </div>
+
+      <div class="side-section">
+        <div class="side-title">Memory <button id="clearMemory" class="link-btn" title="Clear long-term memory">clear</button></div>
+        <ul id="memoryList" class="memory-list"></ul>
+      </div>
+
+      <div class="side-footer">
+        <button id="openHubFooter" class="link-btn">Agent Hub & Settings</button>
+        <div class="side-footer-right">
+          <button id="installBtn" class="link-btn" hidden>Install app</button>
+          <button id="themeBtn" class="mini-icon-btn" title="Toggle light/dark theme" aria-label="Toggle theme"><span data-icon="moon" data-size="15"></span></button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Chat Main -->
+    <div id="backdrop"></div>
+    <main id="main">
+      <header id="topbar">
+        <div class="topbar-left">
+          <button id="menuBtn" class="icon-btn" aria-label="Toggle sidebar">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
+          <div id="proactivePill" class="status-pill" title="Proactive autonomy status">
+            <span class="pulse-dot" id="proactiveDot"></span>
+            <span id="proactivePillText">Proactive</span>
+          </div>
+        </div>
+
+        <div class="topbar-actions">
+          <button id="approvalsBtn" class="top-action-btn" title="Sentinel Approvals" hidden>
+            <span data-icon="shield" data-size="17"></span>
+            <span class="badge danger" id="approvalsBadge">0</span>
+          </button>
+          <button id="syncChatBtn" class="top-action-btn" title="Sync / reload latest messages">
+            <span data-icon="refresh" data-size="16"></span>
+          </button>
+          <button id="emailBtn" class="top-action-btn" title="Email Monitor & AI Triage">
+            <span data-icon="mail" data-size="17"></span>
+            <span class="badge" id="emailBadge" hidden>0</span>
+          </button>
+          <button id="notifBtn" class="top-action-btn" title="Browser Notifications">
+            <span data-icon="bell" data-size="17"></span>
+            <span class="badge" id="notifBadge" hidden>0</span>
+          </button>
+          <button id="checkInBtn" class="top-action-btn" title="Force proactive check-in & email scan">
+            <span data-icon="handwave" data-size="18"></span>
+          </button>
+          <button id="hubBtn" class="top-action-btn" title="Agent Hub: Proactive, Email, Jobs, Watchers, Sentinel, MCP">
+            <span data-icon="sliders" data-size="17"></span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Browser notification permission nudge bar (shown only when permission === 'default') -->
+      <div id="notifBanner" class="banner info" hidden>
+        <span class="inline-icon-text"><span data-icon="bell" data-size="15"></span><span>Enable desktop/browser notifications so Pond can alert you immediately about important emails, reminders, and tasks.</span></span>
+        <div class="banner-actions">
+          <button id="enableNotifBannerBtn" class="btn primary sm">Enable Notifications</button>
+          <button id="dismissNotifBannerBtn" class="btn ghost sm">Later</button>
+        </div>
+      </div>
+
+      <!-- Sentinel Out-of-Band Approval Banner -->
+      <div id="sentinelBanner" class="sentinel-banner" hidden></div>
+
+      <div id="messages" aria-live="polite"></div>
+
+      <div id="slashMenu" role="listbox" hidden></div>
+      <div id="attachStrip" hidden></div>
+      <form id="composer" autocomplete="off">
+        <button id="attachBtn" type="button" aria-label="Attach image" title="Attach image (or paste / drop)" hidden>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+        </button>
+        <input id="attachInput" type="file" accept="image/*" multiple hidden />
+        <textarea id="input" rows="1" placeholder=""></textarea>
+        <button id="sendBtn" type="submit" aria-label="Send">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5.5 11.5 6.5-6.5 6.5 6.5"/></svg>
+        </button>
+      </form>
+    </main>
+  </div>
+
+  <!-- Notification Center Drawer -->
+  <div id="notifDrawer" class="drawer" hidden>
+    <div class="drawer-header">
+      <h3 class="inline-icon-text"><span data-icon="bell" data-size="16"></span><span>Notifications</span></h3>
+      <button class="close-btn" data-close="notifDrawer" aria-label="Close"><span data-icon="close" data-size="17"></span></button>
+    </div>
+    <div class="drawer-controls">
+      <div class="perm-row">
+        <span id="notifPermLabel" class="inline-icon-text">Checking browser permission…</span>
+        <button id="reqNotifBtn" class="btn primary sm" hidden>Allow</button>
+        <button id="testNotifBtn" class="btn sm">Test</button>
+      </div>
+      <div class="perm-row">
+        <span id="pushStatusLabel" class="inline-icon-text">Push: checking…</span>
+        <button id="testPushBtn" class="btn sm" hidden>Test push</button>
+      </div>
+      <div class="toggle-row">
+        <label><input type="checkbox" id="soundToggle" checked /> Sound chime</label>
+        <label><input type="checkbox" id="muteToggle" /> Mute popups</label>
+        <button id="markAllReadBtn" class="link-btn">Mark all read</button>
+        <button id="clearNotifBtn" class="link-btn">Clear</button>
+      </div>
+    </div>
+    <div id="notifList" class="drawer-body"><div class="empty">No notifications yet</div></div>
+  </div>
+
+  <!-- Email Triage Drawer -->
+  <div id="emailDrawer" class="drawer" hidden>
+    <div class="drawer-header">
+      <h3 class="inline-icon-text"><span data-icon="mail" data-size="16"></span><span>Email Monitor & AI Triage</span></h3>
+      <button class="close-btn" data-close="emailDrawer" aria-label="Close"><span data-icon="close" data-size="17"></span></button>
+    </div>
+    <div class="drawer-controls">
+      <div class="perm-row">
+        <span id="emailDrawerStatus" class="inline-icon-text">Not configured</span>
+        <div class="btn-group">
+          <button id="syncEmailBtn" class="btn primary sm">Sync Now</button>
+          <button id="simEmailBtn" class="btn sm" title="Simulate an urgent incoming email to test AI triage & browser notifications">Test Email</button>
+          <button id="dismissAllEmailBtn" class="btn ghost sm">Dismiss All</button>
+          <button id="configEmailJumpBtn" class="btn ghost sm">Configure</button>
+        </div>
+      </div>
+    </div>
+    <div id="emailList" class="drawer-body"><div class="empty">No emails synced yet</div></div>
+  </div>
+
+  <!-- Agent Hub / Settings Modal -->
+  <div id="hubModal" class="modal-backdrop" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="inline-icon-text"><span data-icon="sliders" data-size="17"></span><span>Pond Agent Hub</span></h2>
+        <button class="close-btn" data-close="hubModal" aria-label="Close"><span data-icon="close" data-size="18"></span></button>
+      </div>
+      <div class="tabs" id="hubTabs">
+        <button class="tab active" data-tab="proactive"><span data-icon="zap" data-size="14"></span><span>Proactive</span></button>
+        <button class="tab" data-tab="llm"><span data-icon="cpu" data-size="14"></span><span>LLM Engine</span></button>
+        <button class="tab" data-tab="email"><span data-icon="mail" data-size="14"></span><span>Email</span></button>
+        <button class="tab" data-tab="jobs"><span data-icon="clock" data-size="14"></span><span>Routines & Watches</span></button>
+        <button class="tab" data-tab="sentinel"><span data-icon="shield" data-size="14"></span><span>Sentinel</span></button>
+        <button class="tab" data-tab="mcp"><span data-icon="plug" data-size="14"></span><span>MCP & API</span></button>
+        <button class="tab" data-tab="appearance"><span data-icon="sparkles" data-size="14"></span><span>Appearance</span></button>
+        <button class="tab" data-tab="plugins"><span data-icon="plug" data-size="14"></span><span>Plugins</span></button>
+        <button class="tab" data-tab="skills"><span data-icon="sparkles" data-size="14"></span><span>Skills</span></button>
+        <button class="tab" data-tab="activity"><span data-icon="activity" data-size="14"></span><span>Activity & Artifacts</span></button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Tab 1: Proactive -->
+        <section class="tab-panel active" data-panel="proactive">
+          <div class="form-grid">
+            <label class="checkbox-field"><input type="checkbox" id="setProactiveEnabled" /> Enable proactive autonomous mode</label>
+            <label>Aggressiveness level
+              <select id="setAggressiveness">
+                <option value="aggressive">Aggressive (Muse / OpenClaw — proactive tool use, email triage, frequent initiative)</option>
+                <option value="high">High (Recommended — proactive briefings, follow-ups, task work & alerts)</option>
+                <option value="medium">Medium (Balanced check-ins)</option>
+                <option value="low">Low (Only urgent alerts & due reminders)</option>
+              </select>
+            </label>
+            <div class="two-col">
+              <label>Wake-up interval (minutes)<input type="number" id="setIntervalMin" min="1" max="120" /></label>
+              <label>Minimum gap between general check-ins (minutes)<input type="number" id="setMinGapMin" min="1" max="240" /></label>
+            </div>
+            <div class="two-col">
+              <label>Quiet hours (optional, e.g. 23:00-07:00)<input type="text" id="setQuietHours" placeholder="23:00-07:00" /></label>
+              <label>Reminder heads-up (minutes before due)<input type="number" id="setHeadsUpMin" min="0" max="120" /></label>
+            </div>
+            <div class="two-col">
+              <label title="Within this many hours of the last proactive check-in, Pond stays silent unless it has something actionable (new important email, imminent event, due task, time-sensitive find). 0 = off.">Don't disturb if nothing actionable (hours since last check-in)<input type="number" id="setDndHours" min="0" max="24" step="0.5" /></label>
+            </div>
+            <div class="two-col">
+              <label>Your City / Location (for local event & plan suggestions)<input type="text" id="setUserLocation" placeholder="e.g. San Francisco, CA" /></label>
+              <label>Event alert lead time (minutes before event)<input type="number" id="setEventLeadMin" min="0" max="240" /></label>
+            </div>
+            <label>External Calendar iCal (.ics) URL (optional — Google / Apple / Outlook secret iCal link)
+              <div class="inline-row">
+                <input type="text" id="setIcsUrl" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics" />
+                <button id="syncIcsBtn" type="button" class="btn sm">Sync</button>
+              </div>
+            </label>
+            <label class="checkbox-field"><input type="checkbox" id="setAutoTasks" /> Autonomously work on open to-dos & research tasks</label>
+            <label class="checkbox-field"><input type="checkbox" id="setBriefings" /> Proactive morning / midday / evening daily briefings & event ideas</label>
+            <div class="form-actions">
+              <button id="saveProactiveBtn" class="btn primary">Save Proactive Settings</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 1b: LLM Engine (data/llm.json) -->
+        <section class="tab-panel" data-panel="llm">
+          <div class="form-grid">
+            <div class="perm-row">
+              <div class="section-sub" style="margin:0;">Model Profiles</div>
+              <div class="btn-group">
+                <button id="toggleNewProfileBtn" type="button" class="btn primary sm">+ New Profile</button>
+                <button id="testLlmBtn" type="button" class="btn sm">Test Connection</button>
+                <button id="deleteLlmProfileBtn" type="button" class="btn danger sm">Delete Profile</button>
+              </div>
+            </div>
+
+            <!-- Inline Add New Profile Panel -->
+            <div id="newProfilePanel" class="hub-card" hidden>
+              <div class="card-top"><span>Create New LLM Profile</span><button id="cancelNewProfileBtn" type="button" class="link-btn">cancel</button></div>
+              <div class="two-col">
+                <label>Profile ID (e.g. openai, ollama, spark-high)
+                  <input type="text" id="newProfKey" placeholder="e.g. openai-high" />
+                </label>
+                <label>Provider Preset (optional)
+                  <select id="newProfPreset">
+                    <option value="">Custom OpenAI-compatible</option>
+                    <option value="openai">OpenAI (api.openai.com)</option>
+                    <option value="openrouter">OpenRouter (openrouter.ai)</option>
+                    <option value="deepseek">DeepSeek (api.deepseek.com)</option>
+                    <option value="ollama">Ollama (localhost:11434)</option>
+                    <option value="lmstudio">LM Studio (localhost:1234)</option>
+                  </select>
+                </label>
+              </div>
+              <div class="two-col">
+                <label>Display Label<input type="text" id="newProfLabel" placeholder="e.g. OpenAI GPT-5 High" /></label>
+                <label>Model ID<input type="text" id="newProfModel" placeholder="e.g. gpt-5-mini" /></label>
+              </div>
+              <div class="two-col">
+                <label>Base URL<input type="text" id="newProfBaseUrl" placeholder="https://api.openai.com/v1" /></label>
+                <label>API Key (or $ENV_VAR)<input type="text" id="newProfApiKey" placeholder="$OPENAI_API_KEY or sk-..." /></label>
+              </div>
+              <div class="two-col">
+                <label>Context Length (tokens)
+                  <input type="number" id="newProfContextLength" min="2048" step="1024" placeholder="128000 (e.g. 768000)" />
+                </label>
+                <label>Reasoning Effort
+                  <select id="newProfEffort">
+                    <option value="">Default (model native)</option>
+                    <option value="none">none</option>
+                    <option value="minimal">minimal</option>
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                    <option value="xhigh">xhigh</option>
+                  </select>
+                </label>
+              </div>
+              <label class="checkbox-field">
+                <input type="checkbox" id="newProfInputImage" /> Model accepts images (vision)
+              </label>
+              <label class="checkbox-field">
+                <input type="checkbox" id="newProfActivate" checked /> Switch to this profile immediately
+              </label>
+              <div class="form-actions" style="margin-top:2px;">
+                <button id="createProfileBtn" type="button" class="btn primary sm">Create Profile</button>
+              </div>
+            </div>
+
+            <div class="two-col">
+              <label>Editing / Active Profile
+                <select id="llmActiveProfile"></select>
+              </label>
+              <label>Fast Background Profile (email triage / watchers)
+                <select id="llmFastProfile"></select>
+              </label>
+            </div>
+            <div class="two-col">
+              <label>Display Label<input type="text" id="llmLabel" placeholder="Default" /></label>
+              <label>Model ID<input type="text" id="llmModel" placeholder="gpt-5-mini / deepseek-chat / llama3.1" /></label>
+            </div>
+            <div class="two-col">
+              <label>Base URL<input type="text" id="llmBaseUrl" placeholder="https://api.openai.com/v1" /></label>
+              <label>API Key (or $ENV_VAR like $OPENAI_API_KEY)<input type="text" id="llmApiKey" placeholder="$OPENAI_API_KEY" /></label>
+            </div>
+            <div class="two-col">
+              <label>Context Length (tokens)
+                <input type="number" min="2048" step="1024" id="llmContextLength" placeholder="e.g. 768000" />
+              </label>
+              <label>Reasoning Effort
+                <select id="llmEffort">
+                  <option value="">Default (model native)</option>
+                  <option value="none">none</option>
+                  <option value="minimal">minimal</option>
+                  <option value="low">low</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high</option>
+                  <option value="xhigh">xhigh</option>
+                </select>
+              </label>
+            </div>
+            <div class="two-col">
+              <label>Temperature (blank = default)<input type="number" step="0.05" min="0" max="2" id="llmTemp" placeholder="default" /></label>
+              <label>Max Output Tokens (optional)<input type="number" min="64" id="llmMaxTokens" placeholder="default" /></label>
+            </div>
+            <div class="checkbox-field">
+              <span>Input types:</span>
+              <label><input type="checkbox" checked disabled /> Text</label>
+              <label><input type="checkbox" id="llmInputImage" /> Image (vision)</label>
+            </div>
+            <div class="form-actions">
+              <button id="saveLlmFormBtn" type="button" class="btn primary sm">Save & Activate Profile</button>
+              <span id="llmTestResult" class="card-meta" style="align-self:center;"></span>
+            </div>
+
+            <div class="section-sub" style="margin-top:12px;">Raw JSON Config (<code id="llmPathLabel">data/llm.json</code> — auto-reloads when edited on disk)</div>
+            <textarea id="llmJsonEditor" rows="11" spellcheck="false" style="font-family: ui-monospace, Consolas, monospace; font-size: .78rem;"></textarea>
+            <div class="form-actions">
+              <button id="saveLlmJsonBtn" type="button" class="btn primary sm">Save llm.json</button>
+              <span id="pythonStatusLabel" class="card-meta" style="align-self:center;"></span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 2: Email -->
+        <section class="tab-panel" data-panel="email">
+          <div class="form-grid">
+            <!-- Microsoft 365 / Outlook 365 Hosted Work Email (OAuth2 Graph API — works alongside Gmail!) -->
+            <div class="hub-card">
+              <div class="card-top">
+                <span>Microsoft 365 / Outlook 365 Business (OAuth2 — Custom Domain / Work Email)</span>
+                <span id="ms365StatusPill" class="pill">Not connected</span>
+              </div>
+              <div class="card-text" style="background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:8px 10px; margin:4px 0;">
+                <strong>Microsoft 365 setup (works with MFA &amp; custom domains, runs alongside Gmail):</strong><br/>
+                1) Open <a href="https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/CreateApplicationBlade" target="_blank" rel="noopener">Microsoft Entra App Registration</a> → Name it <code>Pond</code> (Supported accounts: <em>Accounts in this organizational directory</em> or <em>Any org + personal</em>) → Register.<br/>
+                2) In the new app → <strong>Authentication</strong> → enable <strong>Allow public client flows = Yes</strong> → Save.<br/>
+                3) Copy the <strong>Application (client) ID</strong> below and click <strong>Sign in with Microsoft 365</strong> (no secret needed).
+              </div>
+              <div class="two-col">
+                <label>Application (client) ID
+                  <input type="text" id="ms365ClientId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+                </label>
+                <label>Tenant (default: organizations, or your Directory/Tenant ID)
+                  <input type="text" id="ms365TenantId" placeholder="organizations" />
+                </label>
+              </div>
+              <label class="checkbox-field"><input type="checkbox" id="ms365AllowSend" checked /> Allow sending replies via Outlook 365 (still Sentinel-approved)</label>
+              <div id="ms365DeviceBox" class="card-text" hidden style="background:var(--accent-soft); border:1px solid var(--accent); border-radius:8px; padding:10px 12px;">
+                <div><strong>Enter this code at Microsoft:</strong> <code id="ms365UserCode" style="font-size:1rem; font-weight:700; letter-spacing:.08em;"></code></div>
+                <div class="btn-group" style="margin-top:8px;">
+                  <a id="ms365VerifyLink" class="btn primary sm" href="https://microsoft.com/devicelogin" target="_blank" rel="noopener" style="text-decoration:none;">Open microsoft.com/devicelogin</a>
+                  <button id="ms365CopyCodeBtn" type="button" class="btn sm">Copy Code</button>
+                </div>
+                <div class="card-meta" style="margin-top:6px;">Waiting for you to approve in browser… Pond will connect &amp; sync automatically.</div>
+              </div>
+              <div class="form-actions" style="margin-top:2px; align-items:center;">
+                <button id="ms365LoginBtn" type="button" class="btn primary sm">Sign in with Microsoft 365</button>
+                <button id="ms365SyncBtn" type="button" class="btn sm" hidden>Sync M365 Now</button>
+                <button id="ms365DisconnectBtn" type="button" class="btn danger sm" hidden>Disconnect</button>
+                <span id="ms365InfoText" class="card-meta"></span>
+              </div>
+            </div>
+
+            <!-- Quick 2-Step IMAP Setup Card (Gmail / iCloud / Fastmail / Yahoo) -->
+            <div class="hub-card">
+              <div class="card-top">
+                <span>Quick Connect IMAP (Gmail / iCloud / Fastmail / Yahoo)</span>
+                <select id="emailProviderPreset" style="width:auto; padding:4px 8px; font-size:.78rem;">
+                  <option value="gmail">Gmail (Recommended)</option>
+                  <option value="icloud">Apple iCloud</option>
+                  <option value="outlook">Outlook / Hotmail (IMAP)</option>
+                  <option value="fastmail">Fastmail</option>
+                  <option value="yahoo">Yahoo Mail</option>
+                  <option value="custom">Custom IMAP / SMTP</option>
+                </select>
+              </div>
+
+              <div id="gmailGuideBox" class="card-text" style="background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:8px 10px; margin:4px 0;">
+                <strong>Gmail 30-second setup:</strong>
+                1) Open <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">Google App Passwords</a> (requires 2-Step Verification) →
+                2) Type <code>Pond</code> and click Create →
+                3) Paste the 16-letter code below (spaces are stripped automatically).
+              </div>
+
+              <div class="two-col">
+                <label>Email Address
+                  <input type="text" id="quickEmailAddr" placeholder="you@gmail.com" />
+                </label>
+                <label>App Password
+                  <input type="password" id="quickEmailPass" placeholder="xxxx xxxx xxxx xxxx" />
+                </label>
+              </div>
+
+              <div class="form-actions" style="margin-top:2px; align-items:center;">
+                <button id="quickConnectEmailBtn" type="button" class="btn primary sm">Connect & Sync Inbox</button>
+                <a id="openAppPassLink" class="btn sm" href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener" style="text-decoration:none;">Get Gmail App Password</a>
+                <span id="emailTestStatus" class="card-meta"></span>
+              </div>
+            </div>
+
+            <div class="two-col">
+              <label class="checkbox-field"><input type="checkbox" id="setEmailEnabled" /> Auto-monitor inbox in background</label>
+              <label class="checkbox-field"><input type="checkbox" id="setEmailAutoTriage" /> AI importance triage & desktop alert</label>
+            </div>
+
+            <div class="two-col">
+              <label>Check inbox every (minutes)<input type="number" id="setEmailPollMin" min="1" max="60" /></label>
+              <label>VIP Senders (always flagged High priority)
+                <input type="text" id="setVipSenders" placeholder="boss@company.com, mom@example.com" />
+              </label>
+            </div>
+            <label>Important Keywords (comma-separated)
+              <input type="text" id="setImportantKeywords" placeholder="urgent, invoice, security, flight, interview, deadline" />
+            </label>
+
+            <details id="advancedEmailDetails" style="border:1px solid var(--border); border-radius:10px; padding:8px 12px; background:var(--panel-2);">
+              <summary style="cursor:pointer; font-size:.8rem; font-weight:600; color:var(--text-soft);">Advanced IMAP / SMTP Server Settings</summary>
+              <div class="form-grid" style="margin-top:10px;">
+                <div class="two-col">
+                  <label>IMAP Host<input type="text" id="setImapHost" placeholder="imap.gmail.com" /></label>
+                  <label>IMAP Port<input type="number" id="setImapPort" value="993" /></label>
+                </div>
+                <div class="two-col">
+                  <label>IMAP Username<input type="text" id="setImapUser" placeholder="you@gmail.com" /></label>
+                  <label>IMAP Password<input type="password" id="setImapPass" placeholder="App password" /></label>
+                </div>
+                <div class="two-col">
+                  <label>Mailbox<input type="text" id="setImapMailbox" placeholder="INBOX" /></label>
+                  <label>SMTP Host<input type="text" id="setSmtpHost" placeholder="smtp.gmail.com" /></label>
+                </div>
+                <div class="two-col">
+                  <label>SMTP Port<input type="number" id="setSmtpPort" value="465" /></label>
+                  <label>SMTP Username<input type="text" id="setSmtpUser" placeholder="you@gmail.com" /></label>
+                </div>
+                <label>SMTP Password<input type="password" id="setSmtpPass" placeholder="App password" /></label>
+              </div>
+            </details>
+
+            <div class="form-actions">
+              <button id="saveEmailBtn" type="button" class="btn primary sm">Save Settings</button>
+              <button id="testSyncEmailBtn" type="button" class="btn sm">Sync Now</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 3: Jobs & Watchers -->
+        <section class="tab-panel" data-panel="jobs">
+          <div class="section-sub">Recurring Daily Routines & Scheduled Jobs</div>
+          <div class="inline-form">
+            <input type="text" id="newJobName" placeholder="Routine name (e.g. Morning Inbox & Agenda Briefing)" />
+            <input type="text" id="newJobCron" placeholder="Cron (e.g. 0 8 * * 1-5) or blank" />
+            <input type="number" id="newJobInterval" placeholder="Or every N min" min="1" />
+            <textarea id="newJobPrompt" rows="2" placeholder="What Pond should do (e.g. Check my important emails, today's events, and suggest one fun thing happening nearby this evening)"></textarea>
+            <button id="addJobBtn" class="btn primary sm">+ Add Routine</button>
+          </div>
+          <div id="hubJobsList" class="card-list"></div>
+
+          <div class="section-sub" style="margin-top:18px;">Proactive Watchers (Events, Deals, News, Feeds)</div>
+          <div class="inline-form">
+            <div class="two-col">
+              <input type="text" id="newWatchName" placeholder="Watch name (e.g. Weekend Concerts Nearby)" />
+              <select id="newWatchType">
+                <option value="search">Web Search Topic</option>
+                <option value="rss">RSS / Atom Feed</option>
+                <option value="url">Webpage URL</option>
+              </select>
+            </div>
+            <div class="two-col">
+              <input type="text" id="newWatchTarget" placeholder="Search topic, RSS feed URL, or webpage URL" />
+              <input type="number" id="newWatchInterval" value="60" min="2" placeholder="Every N min" />
+            </div>
+            <input type="text" id="newWatchCriteria" placeholder="Alert criteria (optional, e.g. Concerts, food festivals, or ticket drops this weekend)" />
+            <button id="addWatchBtn" class="btn primary sm">+ Add Watch</button>
+          </div>
+          <div id="hubWatchesList" class="card-list"></div>
+        </section>
+
+        <!-- Tab 4: Sentinel -->
+        <section class="tab-panel" data-panel="sentinel">
+          <div class="form-grid">
+            <label class="checkbox-field"><input type="checkbox" id="setSentinelEnabled" /> Enable Sentinel out-of-band permission gate</label>
+            <div class="policy-grid" id="sentinelPoliciesGrid"></div>
+            <div class="form-actions">
+              <button id="saveSentinelBtn" class="btn primary sm">Save Sentinel Policies</button>
+            </div>
+          </div>
+          <div class="section-sub" style="margin-top:16px;">Recent Approval History</div>
+          <div id="hubApprovalsList" class="card-list"></div>
+        </section>
+
+        <!-- Tab 5: MCP & API -->
+        <section class="tab-panel" data-panel="mcp">
+          <div class="perm-row" style="margin-bottom:8px;">
+            <div class="section-sub" style="margin:0;">Auto-Discovered MCP Servers (Local Apps & Live Ports)</div>
+            <div class="btn-group">
+              <button id="scanMcpBtn" class="btn sm">Scan Again</button>
+              <button id="importAllMcpBtn" class="btn primary sm" hidden>Import All</button>
+            </div>
+          </div>
+          <div id="hubMcpDiscovered" class="card-list"><div class="empty">Scanning local configs & ports…</div></div>
+
+          <div class="section-sub" style="margin-top:16px;">Quick Auto-Connect (Paste URL, npx command, package, or mcpServers JSON)</div>
+          <div class="inline-form">
+            <textarea id="mcpQuickInput" rows="2" placeholder="https://mcp.notion.com/mcp  OR  npx -y @modelcontextprotocol/server-fetch  OR  paste mcpServers JSON"></textarea>
+            <div class="form-actions" style="margin-top:0;">
+              <button id="quickAddMcpBtn" class="btn primary sm">Auto-Detect & Connect</button>
+            </div>
+          </div>
+
+          <div class="section-sub" style="margin-top:16px;">Connected MCP Servers</div>
+          <div id="hubMcpList" class="card-list"></div>
+
+          <div class="section-sub" style="margin-top:16px;">One-Click Daily-Life Presets</div>
+          <div id="hubMcpPresets" class="card-list"></div>
+
+          <div class="section-sub" style="margin-top:18px;">Server Endpoints (Webhooks, Email Ingest & OpenAI-Compatible API)</div>
+          <div class="endpoint-box" id="endpointsBox"></div>
+        </section>
+
+        <!-- Tab 6: Activity & Artifacts -->
+        <section class="tab-panel" data-panel="appearance">
+          <div class="section-sub">Personality</div>
+          <div class="card-meta" style="margin-bottom:8px;">How Pond talks. Only tone and personality change — tools, accuracy and safety rules stay the same.</div>
+          <div id="hubPersona" style="margin-bottom:18px"></div>
+          <div class="card-meta" style="margin-bottom:8px;">Character and color are saved on the server — every device shows the same.</div>
+          <div id="hubAppearance"></div>
+        </section>
+        <section class="tab-panel" data-panel="plugins">
+          <div class="section-sub" style="display:flex;justify-content:space-between;align-items:center;">
+            <span>Plugins</span><button id="reloadPluginsBtn" class="btn sm">Reload plugins</button>
+          </div>
+          <div class="card-meta" style="margin-bottom:8px;">Drop a folder into <code>plugins/</code> (with <code>plugin.json</code> + <code>index.mjs</code>) and press Reload. Plugins run inside Pond — only install ones you trust. See <code>docs/plugins.md</code>.</div>
+          <div id="hubPluginsList" class="card-list"></div>
+        </section>
+        <section class="tab-panel" data-panel="skills">
+          <div class="section-sub">Saved Skills</div>
+          <div class="card-meta" style="margin-bottom:8px;">Reusable procedures Pond can re-run with fresh data. Ask Pond "save this as a skill" after it builds something you like, then run it with <code>/skill-name</code>. Stored in <code>data/skills/&lt;name&gt;/SKILL.md</code>.</div>
+          <div id="hubSkillsList" class="card-list"></div>
+        </section>
+        <section class="tab-panel" data-panel="activity">
+          <div class="section-sub">Saved Artifacts Library</div>
+          <div id="hubArtifactsList" class="card-list"></div>
+          <div class="section-sub" style="margin-top:16px;">Autonomous Activity Audit Log</div>
+          <div id="hubActivityList" class="card-list"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" hidden></div>
+  <script src="/icons.js"></script>
+  <script src="/markdown.js"></script>
+  <script src="/mascot.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
