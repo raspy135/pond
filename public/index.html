@@ -592,6 +592,8 @@
               <button id="saveFsRootBtn" type="button" class="btn primary sm">Save folder</button>
               <span id="fsRootResult" class="card-meta" style="align-self:center;"></span>
             </div>
+            <label class="checkbox-field"><input type="checkbox" id="setAllowShell" /> <span>Let the AI run <span id="shellName">PowerShell</span> commands</span></label>
+            <small class="field-hint" id="allowShellHint">Runs as you, starting in the folder above (pipes, git, any installed tool). Each command asks you first — change that with "Run commands" below.</small>
           </div>
           <div class="form-grid">
             <label class="checkbox-field"><input type="checkbox" id="setSentinelEnabled" /> Enable Sentinel out-of-band permission gate</label>
