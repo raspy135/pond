@@ -162,6 +162,35 @@ body {
 .status-pill.active .pulse-dot { background: var(--accent); animation: pulse 1.1s infinite; }
 @keyframes pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.45); opacity: .45; } }
 
+/* Model chip + menu (top bar) */
+.model-switch { position: relative; min-width: 0; flex-shrink: 1; }
+.model-chip { cursor: pointer; font-family: inherit; max-width: 260px; overflow: hidden; }
+.model-chip:hover { border-color: var(--pm-body, var(--accent)); color: var(--text); }
+#modelChipText { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.model-chip-effort:not(:empty) { font-size: .68rem; padding: 1px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--text); }
+.model-chip .chev { opacity: .6; flex-shrink: 0; }
+.model-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; width: 330px; max-width: calc(100vw - 24px);
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 6px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.18); display: flex; flex-direction: column; gap: 2px;
+}
+.model-menu[hidden] { display: none; }
+.model-menu-head { font-size: .66rem; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); font-weight: 600; padding: 8px 8px 4px; }
+.model-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: 0; border-radius: 8px; padding: 7px 8px; color: var(--text); cursor: pointer; font: inherit; }
+.model-menu-item:hover { background: var(--panel-2); }
+.model-menu-item.active .mm-label { font-weight: 600; }
+.mm-check { width: 14px; flex-shrink: 0; color: var(--pm-body, var(--accent)); display: inline-flex; }
+.mm-main { display: flex; flex-direction: column; min-width: 0; }
+.mm-label { font-size: .84rem; }
+.mm-sub { font-size: .72rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.effort-row { display: flex; gap: 4px; padding: 2px 6px 4px; flex-wrap: wrap; }
+.effort-btn { flex: 1; min-width: 48px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text-soft); border-radius: 8px; padding: 5px 6px; font: inherit; font-size: .76rem; cursor: pointer; }
+.effort-btn.active { border-color: var(--pm-body, var(--accent)); color: var(--text); background: var(--accent-soft); font-weight: 600; }
+.model-menu-note { font-size: .7rem; color: var(--muted); padding: 2px 8px 6px; line-height: 1.35; }
+.model-menu-item.manage { border-top: 1px solid var(--border); border-radius: 0 0 8px 8px; margin-top: 2px; }
+@media (max-width: 640px) { .model-chip { max-width: 100%; } .model-menu { position: fixed; left: 12px; right: 12px; top: 58px; width: auto; } }
+@media (max-width: 520px) { #proactivePill { display: none; } .topbar-left { flex: 1; gap: 8px; } }
+
 .top-action-btn {
   position: relative; background: var(--panel-2); border: 1px solid var(--border);
   border-radius: 10px; color: var(--text); height: 36px; min-width: 36px; padding: 0 9px;

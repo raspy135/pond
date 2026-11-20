@@ -353,6 +353,48 @@ addEventListener('message', (e) => {
   }
 });
 
+// ---------- Model chip: switch model profile and reasoning effort from the top bar ----------
+const EFFORT_CHOICES = [['', 'Default'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Max']];
+async function renderModelMenu() {
+  const menu = $('#modelMenu');
+  menu.innerHTML = '<div class="model-menu-note">Loading…</div>';
+  let cfg;
+  try { cfg = await fetch('/api/llm', { cache: 'no-store' }).then((r) => r.json()); } catch { menu.innerHTML = '<div class="model-menu-note">Could not load models</div>'; return; }
+  const active = cfg.activeProfile;
+  const effort = cfg.profiles?.[active]?.reasoningEffort || '';
+  const rows = Object.entries(cfg.profiles || {}).map(([key, p]) => `
+    <button type="button" class="model-menu-item${key === active ? ' active' : ''}" role="menuitemradio" aria-checked="${key === active}" data-profile="${escapeHtml(key)}">
+      <span class="mm-check">${key === active ? icon('check', 14) : ''}</span>
+      <span class="mm-main"><span class="mm-label">${escapeHtml(p.label || key)}</span><span class="mm-sub">${escapeHtml(p.model || '')}${(p.inputTypes || []).includes('image') ? ' · vision' : ''}</span></span>
+    </button>`).join('');
+  const efforts = EFFORT_CHOICES.map(([v, l]) => `<button type="button" class="effort-btn${v === effort ? ' active' : ''}" data-effort="${v}">${l}</button>`).join('');
+  menu.innerHTML = `<div class="model-menu-head">Model</div>${rows}
+    <div class="model-menu-head">Reasoning effort</div><div class="effort-row">${efforts}</div>
+    <div class="model-menu-note">Some models put the effort into the prompt — changing it may make the next reply re-read the chat once.</div>
+    <button type="button" class="model-menu-item manage" data-manage="1"><span class="mm-check"></span><span class="mm-main"><span class="mm-label">Manage models…</span></span></button>`;
+}
+function closeModelMenu() { $('#modelMenu').hidden = true; $('#modelChip').setAttribute('aria-expanded', 'false'); }
+$('#modelChip').addEventListener('click', async (e) => {
+  e.stopPropagation();
+  const menu = $('#modelMenu');
+  if (!menu.hidden) return closeModelMenu();
+  menu.hidden = false; $('#modelChip').setAttribute('aria-expanded', 'true');
+  await renderModelMenu();
+});
+$('#modelMenu').addEventListener('click', async (e) => {
+  e.stopPropagation();
+  const item = e.target.closest('[data-profile], [data-effort], [data-manage]');
+  if (!item) return;
+  if (item.dataset.manage) { closeModelMenu(); openHub('llm'); return; }
+  const body = item.dataset.profile !== undefined ? { profile: item.dataset.profile } : { effort: item.dataset.effort };
+  const r = await fetch('/api/llm/active', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((x) => x.json()).catch(() => ({}));
+  if (r.error) { showToast(r.error); return; }
+  if (body.profile !== undefined) closeModelMenu(); else await renderModelMenu();
+  refreshState();
+});
+document.addEventListener('click', (e) => { if (!e.target.closest?.('.model-switch')) closeModelMenu(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModelMenu(); });
+
 // ---------- Sidebar cards: click a long (clamped) item to show all of it ----------
 document.addEventListener('click', (e) => {
   const item = e.target.closest?.('.item-list .item');
@@ -811,6 +853,9 @@ async function refreshState() {
     const ctxLabel = s.contextLength ? ` · ${Math.round(s.contextLength / 1000)}k` : '';
     const effortLabel = s.reasoningEffort && s.reasoningEffort !== 'default' ? ` · ${s.reasoningEffort}` : '';
     $('#modelLine').textContent = `${s.model}${ctxLabel}${effortLabel}`;
+    $('#modelChipText').textContent = s.llmLabel && s.llmLabel !== 'Default' ? s.llmLabel : String(s.model || 'Model').split('/').pop();
+    $('#modelChipEffort').textContent = s.reasoningEffort && s.reasoningEffort !== 'default' ? s.reasoningEffort : '';
+    $('#modelChip').title = `${s.model} — switch model / reasoning effort`;
     if (s.contextLength && s.sessionTokens != null) {
       const pct = Math.min(100, Math.round((s.sessionTokens / s.contextLength) * 100));
       const usedK = (s.sessionTokens / 1000).toFixed(1);

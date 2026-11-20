@@ -82,6 +82,13 @@
             <span class="pulse-dot" id="proactiveDot"></span>
             <span id="proactivePillText">Proactive</span>
           </div>
+          <div class="model-switch">
+            <button id="modelChip" class="status-pill model-chip" type="button" aria-haspopup="menu" aria-expanded="false" title="Switch model / reasoning effort">
+              <span data-icon="cpu" data-size="13"></span><span id="modelChipText">Model</span><span id="modelChipEffort" class="model-chip-effort"></span>
+              <svg class="chev" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div id="modelMenu" class="model-menu" role="menu" hidden></div>
+          </div>
         </div>
 
         <div class="topbar-actions">

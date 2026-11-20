@@ -61,7 +61,7 @@ import {
 } from './lib/mcp.js';
 import { listArtifacts, getArtifact, deleteArtifact, registerSettingsReloadHook } from './lib/tools.js';
 import { detectPython, resolveRunFile } from './lib/python.js';
-import { ensureLlmConfig, getPublicLlmConfig, saveLlmConfig, resolveProfile, testLlmProfile } from './lib/llm-config.js';
+import { ensureLlmConfig, getPublicLlmConfig, saveLlmConfig, resolveProfile, testLlmProfile, setActiveLlm } from './lib/llm-config.js';
 import { listSkills, getSkill, deleteSkill } from './lib/skills.js';
 import { readHtml } from './lib/htmlcache.js';
 import { serveShare, ensureShareDir, preparePage, isEmbed } from './lib/share.js';
@@ -253,6 +253,7 @@ const server = http.createServer(async (req, res) => {
         model: llm.model,
         inputTypes: llm.inputTypes,
         llmProfile: llm.profileKey,
+        llmLabel: llm.label,
         contextLength: llm.contextLength,
         sessionTokens,
         reasoningEffort: llm.reasoningEffort || 'default',
@@ -281,6 +282,14 @@ const server = http.createServer(async (req, res) => {
     // LLM Engine JSON config (data/llm.json)
     if (req.method === 'GET' && pathname === '/api/llm') {
       return sendJson(res, 200, await getPublicLlmConfig());
+    }
+    if (req.method === 'POST' && pathname === '/api/llm/active') {
+      const body = await readJsonBody(req);
+      try {
+        const llm = await setActiveLlm({ profile: body.profile, effort: body.effort });
+        broadcast({ type: 'settings_updated' }); // every device's chip follows
+        return sendJson(res, 200, { ok: true, llm });
+      } catch (err) { return sendJson(res, 400, { error: String(err.message || err) }); }
     }
     if (req.method === 'POST' && pathname === '/api/llm/test') {
       const body = await readJsonBody(req);
