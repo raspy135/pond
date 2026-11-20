@@ -3,6 +3,28 @@ const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
 const messagesEl = $('#messages');
+
+// ---------- Scrolling: follow new output only while the reader is at the bottom ----------
+// Scrolling up (to re-read while Pond is thinking or writing) stops the auto-follow; the ↓ button
+// or scrolling back down resumes it.
+let stickToBottom = true;
+function scrollToLatest(force = false) {
+  if (force) stickToBottom = true;
+  if (stickToBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+  updateJumpBtn();
+}
+function updateJumpBtn() {
+  const btn = document.getElementById('jumpLatestBtn');
+  if (!btn) return;
+  const away = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight > 80;
+  btn.hidden = !away;
+  const composer = document.getElementById('composer');
+  if (composer) btn.style.bottom = `${composer.offsetHeight + 14}px`;
+}
+messagesEl.addEventListener('scroll', () => {
+  stickToBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 80;
+  updateJumpBtn();
+}, { passive: true });
 const input = $('#input');
 const composer = $('#composer');
 const sendBtn = $('#sendBtn');
@@ -395,6 +417,9 @@ $('#modelMenu').addEventListener('click', async (e) => {
 document.addEventListener('click', (e) => { if (!e.target.closest?.('.model-switch')) closeModelMenu(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModelMenu(); });
 
+// Instant jump: a smooth scroll would chase a reply that keeps growing and never reach the bottom.
+$('#jumpLatestBtn')?.addEventListener('click', () => scrollToLatest(true));
+
 // ---------- Sidebar cards: click a long (clamped) item to show all of it ----------
 document.addEventListener('click', (e) => {
   const item = e.target.closest?.('.item-list .item');
@@ -573,7 +598,7 @@ function addMessage(role, text, { proactive = false, tag = '' } = {}) {
 
   row.appendChild(col);
   messagesEl.appendChild(row);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
+  scrollToLatest(role === 'user'); // your own message always brings you to the bottom
   return body;
 }
 
@@ -613,7 +638,7 @@ function addToolTrace(name, args, result) {
     <div class="tool-trace-detail">${escapeHtml(argStr ? `args: ${argStr}\n` : '')}result: ${escapeHtml(resStr.length > 800 ? resStr.slice(0, 800) + '…' : resStr)}</div>
   `;
   messagesEl.appendChild(details);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
+  scrollToLatest();
 }
 
 let activeChatAbort = null;
@@ -661,7 +686,7 @@ function createTurnView({ startedAt = Date.now() } = {}) {
   bubbleBody.classList.add('streaming');
 
   const v = { bubbleBody, msgRow, acc: '', thoughtAcc: '', thoughtEl: null, hadToolSinceText: false, finished: false };
-  const follow = () => { if (msgRow.isConnected) messagesEl.scrollTop = messagesEl.scrollHeight; };
+  const follow = () => { if (msgRow.isConnected) scrollToLatest(); };
   v.handle = (payload) => {
     if (v.finished) return;
     if (payload.type === 'reasoning') {
@@ -707,6 +732,7 @@ function createTurnView({ startedAt = Date.now() } = {}) {
     else if (v.acc) renderAssistantBody(bubbleBody, v.acc);
     else if (!msgRow.classList.contains('error')) bubbleBody.textContent = '(no response)';
     setMood(msgRow, msgRow.classList.contains('error') ? 'sad' : stopped ? 'sleepy' : 'happy');
+    if (msgRow.isConnected) scrollToLatest(); // the final render can change height
   };
   return v;
 }
@@ -1888,7 +1914,7 @@ async function loadConversation({ force = true, silent = false } = {}) {
       }
     }
     if (!(data.messages || []).length && !data.activeTurn) showGreeting();
-    if (force || wasNearBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+    if (force || wasNearBottom) scrollToLatest(true); else updateJumpBtn();
     if (data.activeTurn) attachToTurn(data.activeTurn); // reply still running (switched back / reopened / other device)
     return true;
   } catch (err) {
