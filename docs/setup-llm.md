@@ -39,7 +39,7 @@ Open the **LLM Engine** tab and click **+ New Profile**.
 3. **Model ID** — pick one from the list (it's filled in for you if there's only one).
 4. **API Key** — leave it empty for local servers. Cloud services need their key.
 5. **Context Length** — the context size your server is configured for (e.g. vLLM `--max-model-len`).
-6. Tick **Model accepts images** if it's a vision model, so you can paste photos into the chat.
+6. **Model accepts images** is on by default (most current models can see images) — untick it for a text-only model.
 7. Click **Create Profile**.
 
 ![New profile](images/setup-llm/03-new-profile.png)
