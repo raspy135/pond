@@ -958,22 +958,29 @@ async function refreshState() {
     const events = s.events || [];
     $('#eventCount').textContent = events.length || '';
     if (!events.length) {
-      evList.innerHTML = '<div class="empty">No upcoming events</div>';
+      const nx = s.nextEvent;
+      evList.innerHTML = nx
+        ? `<div class="empty">Nothing in the next 2 weeks · <button class="link-btn" id="nextEvLink">Next: ${escapeHtml(new Date(nx.startAt).toLocaleDateString([], { month: 'short', day: 'numeric' }))} · ${escapeHtml(nx.title)}</button></div>`
+        : '<div class="empty">No upcoming events</div>';
+      if (nx) $('#nextEvLink').onclick = () => { document.body.classList.remove('sidebar-open'); closeAllDrawers(); $('#calDrawer').hidden = false; openCalendar(calKey(new Date(nx.startAt))); };
     } else {
       evList.innerHTML = '';
       for (const ev of events.slice(0, 6)) {
         const div = document.createElement('div');
         div.className = 'item event-item';
-        const when = new Date(ev.startAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-        div.innerHTML = `<div><div>${escapeHtml(ev.title)}</div><div class="sub">${when}${ev.location ? ' · ' + escapeHtml(ev.location) : ''}</div></div>`;
+        const when = ev.allDay
+          ? `${new Date(ev.startAt).toLocaleDateString([], { month: 'short', day: 'numeric' })} · all day`
+          : new Date(ev.startAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+        div.innerHTML = `<div class="ev-open" title="Open in calendar"><div>${escapeHtml(ev.title)}</div><div class="sub">${when}${ev.location ? ' · ' + escapeHtml(ev.location) : ''}</div></div>`;
+        div.querySelector('.ev-open').onclick = () => { document.body.classList.remove('sidebar-open'); closeAllDrawers(); $('#calDrawer').hidden = false; openCalendar(calKey(new Date(ev.startAt))); };
         const del = document.createElement('button');
         del.innerHTML = icon('close', 13);
         del.title = 'Remove event';
         del.onclick = async () => {
-          await fetch(`/api/calendar/${ev.id}`, { method: 'DELETE' });
+          await fetch(`/api/calendar/${encodeURIComponent(ev.id)}`, { method: 'DELETE' });
           refreshState();
         };
-        div.appendChild(del);
+        if (ev.source !== 'ics') div.appendChild(del); // linked-calendar events come back on the next sync
         evList.appendChild(div);
       }
     }
@@ -1151,6 +1158,7 @@ function renderSentinelBanner() {
 function closeAllDrawers() {
   $('#notifDrawer').hidden = true;
   $('#emailDrawer').hidden = true;
+  $('#calDrawer').hidden = true;
 }
 
 function openDrawer(id) {
@@ -1158,7 +1166,235 @@ function openDrawer(id) {
   $(`#${id}`).hidden = false;
   if (id === 'notifDrawer') loadNotificationsDrawer();
   if (id === 'emailDrawer') loadEmailDrawer();
+  if (id === 'calDrawer') openCalendar();
 }
+
+// ---------- Calendar panel ----------
+// Month view + the selected day + what's coming up. Pond's own events can be added/edited here; events from the
+// linked calendar (iCal feed) are read-only — they'd come back on the next sync.
+const cal = { events: [], linked: false, month: null, selected: null, editing: null, byDay: new Map() };
+const calKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const calKeyToDate = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); };
+function calEventDays(ev) {
+  const s = new Date(ev.startAt);
+  let e = ev.endAt ? new Date(ev.endAt) : s;
+  if (ev.allDay && ev.endAt) e = new Date(e.getTime() - 86_400_000); // all-day end date is exclusive
+  else if (e > s && e.getHours() === 0 && e.getMinutes() === 0) e = new Date(e.getTime() - 1); // ends at midnight
+  if (e < s) e = s;
+  const keys = [];
+  const d = new Date(s.getFullYear(), s.getMonth(), s.getDate());
+  for (let i = 0; i < 62 && d <= e; i++) { keys.push(calKey(d)); d.setDate(d.getDate() + 1); }
+  return keys.length ? keys : [calKey(s)];
+}
+async function loadCalendar() {
+  try {
+    const r = await fetch('/api/calendar', { cache: 'no-store' }).then((x) => x.json());
+    cal.events = (r.events || []).filter((e) => !Number.isNaN(new Date(e.startAt).getTime()));
+    cal.linked = Boolean(r.linked);
+  } catch { /* keep what we had */ }
+  cal.byDay = new Map();
+  for (const ev of cal.events) for (const k of calEventDays(ev)) {
+    if (!cal.byDay.has(k)) cal.byDay.set(k, []);
+    cal.byDay.get(k).push(ev);
+  }
+  for (const list of cal.byDay.values()) list.sort((a, b) => (b.allDay ? 1 : 0) - (a.allDay ? 1 : 0) || new Date(a.startAt) - new Date(b.startAt));
+  $('#calSyncBtn').hidden = !cal.linked;
+  renderCalendar();
+}
+function openCalendar(dayKey = null) {
+  const target = dayKey ? calKeyToDate(dayKey) : new Date();
+  cal.month = new Date(target.getFullYear(), target.getMonth(), 1);
+  cal.selected = calKey(target);
+  hideCalForm();
+  loadCalendar();
+}
+function calTimeLabel(ev, dayKey) {
+  if (ev.allDay) return 'All day';
+  const s = new Date(ev.startAt);
+  const e = ev.endAt ? new Date(ev.endAt) : null;
+  const t = (d) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (calKey(s) !== dayKey) return e && calKey(e) === dayKey ? `until ${t(e)}` : 'All day';
+  return e && calKey(e) === dayKey ? `${t(s)} – ${t(e)}` : t(s);
+}
+function renderCalendar() {
+  const m = cal.month || new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  $('#calMonthLabel').textContent = m.toLocaleDateString([], { month: 'long', year: 'numeric' });
+  const grid = $('#calGrid');
+  grid.innerHTML = '';
+  const base = new Date(2026, 10, 1); // a Sunday → localized weekday initials
+  for (let i = 0; i < 7; i++) {
+    const h = document.createElement('div');
+    h.className = 'cal-wd';
+    h.textContent = new Date(base.getFullYear(), base.getMonth(), base.getDate() + i).toLocaleDateString([], { weekday: 'narrow' });
+    grid.appendChild(h);
+  }
+  const todayKey = calKey(new Date());
+  const first = new Date(m.getFullYear(), m.getMonth(), 1 - m.getDay());
+  const weeks = Math.ceil((m.getDay() + new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate()) / 7);
+  for (let i = 0; i < weeks * 7; i++) {
+    const d = new Date(first.getFullYear(), first.getMonth(), first.getDate() + i);
+    const k = calKey(d);
+    const evs = cal.byDay.get(k) || [];
+    const cell = document.createElement('button');
+    cell.type = 'button';
+    cell.className = 'cal-cell';
+    if (d.getMonth() !== m.getMonth()) cell.classList.add('other');
+    if (k === todayKey) cell.classList.add('today');
+    if (k === cal.selected) cell.classList.add('selected');
+    cell.setAttribute('aria-label', `${d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}${evs.length ? `, ${evs.length} event${evs.length === 1 ? '' : 's'}` : ''}`);
+    const dots = evs.slice(0, 3).map((e) => `<i class="${e.source === 'ics' ? 'ics' : ''}"></i>`).join('');
+    cell.innerHTML = `<span class="n">${d.getDate()}</span><span class="dots">${dots}${evs.length > 3 ? '<b>+</b>' : ''}</span>`;
+    cell.addEventListener('click', () => {
+      cal.selected = k;
+      if (d.getMonth() !== m.getMonth()) cal.month = new Date(d.getFullYear(), d.getMonth(), 1);
+      renderCalendar();
+    });
+    grid.appendChild(cell);
+  }
+  renderCalDay();
+}
+function calEventRow(ev, dayKey) {
+  const row = document.createElement('div');
+  row.className = `cal-ev${ev.source === 'ics' ? ' ics' : ''}`;
+  const meta = [ev.location ? escapeHtml(ev.location) : '', ev.source === 'ics' ? 'linked calendar' : '', ev.recurring ? 'repeats' : ''].filter(Boolean).join(' · ');
+  row.innerHTML = `<div class="cal-ev-time">${escapeHtml(calTimeLabel(ev, dayKey))}</div>
+    <div class="cal-ev-main"><div class="cal-ev-title">${escapeHtml(ev.title)}</div>${meta ? `<div class="sub">${meta}</div>` : ''}${ev.notes ? `<div class="cal-ev-notes">${escapeHtml(ev.notes)}</div>` : ''}</div>`;
+  if (ev.source !== 'ics') {
+    const act = document.createElement('div');
+    act.className = 'cal-ev-actions';
+    const edit = document.createElement('button');
+    edit.className = 'link-btn'; edit.textContent = 'Edit';
+    edit.onclick = () => showCalForm(ev);
+    const del = document.createElement('button');
+    del.className = 'link-btn'; del.textContent = 'Delete';
+    del.onclick = async () => {
+      if (!confirm(`Delete "${ev.title}"?`)) return;
+      await fetch(`/api/calendar/${encodeURIComponent(ev.id)}`, { method: 'DELETE' });
+      await loadCalendar(); refreshState();
+    };
+    act.append(edit, del);
+    row.appendChild(act);
+  }
+  return row;
+}
+function renderCalDay() {
+  const dayEl = $('#calDay');
+  const k = cal.selected || calKey(new Date());
+  const d = calKeyToDate(k);
+  const isToday = k === calKey(new Date());
+  dayEl.innerHTML = `<div class="cal-day-head">${isToday ? 'Today · ' : ''}${escapeHtml(d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' }))}</div>`;
+  const evs = cal.byDay.get(k) || [];
+  if (!evs.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.innerHTML = 'Nothing planned. ';
+    const add = document.createElement('button');
+    add.className = 'link-btn'; add.textContent = 'Add an event';
+    add.onclick = () => showCalForm(null, k);
+    empty.appendChild(add);
+    dayEl.appendChild(empty);
+  } else for (const ev of evs) dayEl.appendChild(calEventRow(ev, k));
+
+  // Coming up: the next events after the selected day (handy on a phone, where the grid is small)
+  const up = $('#calUpcoming');
+  up.innerHTML = '';
+  const after = calKeyToDate(k); after.setDate(after.getDate() + 1);
+  const horizon = new Date(after); horizon.setDate(horizon.getDate() + 60);
+  const seen = new Set();
+  const next = cal.events
+    .filter((e) => { const t = new Date(e.startAt); return t >= after && t < horizon; })
+    .sort((a, b) => new Date(a.startAt) - new Date(b.startAt))
+    .filter((e) => (seen.has(e.id) ? false : seen.add(e.id)))
+    .slice(0, 10);
+  if (next.length) {
+    up.innerHTML = '<div class="cal-day-head">Coming up</div>';
+    let last = '';
+    for (const ev of next) {
+      const ek = calKey(new Date(ev.startAt));
+      if (ek !== last) {
+        const sub = document.createElement('button');
+        sub.className = 'cal-date-link link-btn';
+        sub.textContent = calKeyToDate(ek).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+        sub.onclick = () => openCalendar(ek);
+        up.appendChild(sub);
+        last = ek;
+      }
+      up.appendChild(calEventRow(ev, ek));
+    }
+  }
+  $('#calFoot').textContent = cal.linked
+    ? 'Events from your linked calendar are read-only here (change them in that app). Pond refreshes them every 15 minutes.'
+    : 'Tip: link Google / Apple / Outlook in Agent Hub → Proactive (iCal link) to see those events here too.';
+}
+function hideCalForm() { $('#calForm').hidden = true; cal.editing = null; }
+function showCalForm(ev = null, dayKey = null) {
+  cal.editing = ev;
+  const f = $('#calForm');
+  $('#calFormTitle').textContent = ev ? 'Edit event' : 'New event';
+  const s = ev ? new Date(ev.startAt) : null;
+  const e = ev?.endAt ? new Date(ev.endAt) : null;
+  const hm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  $('#calTitle').value = ev?.title || '';
+  $('#calDate').value = s ? calKey(s) : (dayKey || cal.selected || calKey(new Date()));
+  $('#calAllDay').checked = Boolean(ev?.allDay);
+  $('#calStart').value = s && !ev.allDay ? hm(s) : (ev ? '' : '09:00');
+  $('#calEnd').value = e && !ev.allDay ? hm(e) : (ev ? '' : '10:00');
+  $('#calLocation').value = ev?.location || '';
+  $('#calNotes').value = ev?.notes || '';
+  syncCalAllDay();
+  f.hidden = false;
+  f.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  $('#calTitle').focus();
+}
+function syncCalAllDay() {
+  const all = $('#calAllDay').checked;
+  $$('#calForm .cal-time').forEach((l) => { l.hidden = all; });
+}
+$('#calAllDay').addEventListener('change', syncCalAllDay);
+$('#calCancel').addEventListener('click', hideCalForm);
+$('#calForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const date = $('#calDate').value;
+  if (!date) return;
+  const allDay = $('#calAllDay').checked;
+  const start = new Date(`${date}T${allDay ? '09:00' : ($('#calStart').value || '09:00')}`);
+  let end = null;
+  if (!allDay && $('#calEnd').value) {
+    end = new Date(`${date}T${$('#calEnd').value}`);
+    if (end <= start) end.setDate(end.getDate() + 1); // ends after midnight
+  }
+  const body = {
+    title: $('#calTitle').value.trim() || 'Untitled event',
+    startAt: start.toISOString(),
+    endAt: end ? end.toISOString() : null,
+    allDay,
+    location: $('#calLocation').value.trim(),
+    notes: $('#calNotes').value.trim(),
+  };
+  const editing = cal.editing;
+  const r = await fetch(editing ? `/api/calendar/${encodeURIComponent(editing.id)}` : '/api/calendar', {
+    method: editing ? 'PATCH' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) { const err = await r.json().catch(() => ({})); showToast(err.error || 'Could not save the event'); return; }
+  hideCalForm();
+  cal.selected = date;
+  cal.month = new Date(start.getFullYear(), start.getMonth(), 1);
+  await loadCalendar();
+  refreshState();
+  showToast(editing ? 'Event updated' : 'Event added');
+});
+$('#calPrev').addEventListener('click', () => { cal.month = new Date(cal.month.getFullYear(), cal.month.getMonth() - 1, 1); renderCalendar(); });
+$('#calNext').addEventListener('click', () => { cal.month = new Date(cal.month.getFullYear(), cal.month.getMonth() + 1, 1); renderCalendar(); });
+$('#calTodayBtn').addEventListener('click', () => openCalendar());
+$('#calAddBtn').addEventListener('click', () => showCalForm(null, cal.selected));
+$('#calSyncBtn').addEventListener('click', async () => {
+  showToast('Syncing calendar…');
+  const r = await fetch('/api/calendar/sync', { method: 'POST' }).then((x) => x.json()).catch(() => ({}));
+  showToast(r.ok ? `Calendar synced (${r.synced} events)` : `Calendar sync failed${r.error ? `: ${r.error}` : ''}`);
+  loadCalendar();
+});
 
 const CAT_ICON_NAMES = {
   email: 'mail',
@@ -2235,6 +2471,11 @@ function connectEvents() {
       return;
     }
 
+    if (payload.type === 'calendar_updated') {
+      if (!$('#calDrawer').hidden && $('#calForm').hidden) loadCalendar();
+      refreshState();
+      return;
+    }
     if (payload.type === 'reminder') {
       refreshState();
     }
@@ -2408,6 +2649,11 @@ $('#clearNotifBtn').addEventListener('click', async () => {
   loadNotificationsDrawer();
 });
 
+$('#calBtn').addEventListener('click', () => {
+  if ($('#calDrawer').hidden) openDrawer('calDrawer');
+  else closeAllDrawers();
+});
+$('#openCalLink').addEventListener('click', () => { document.body.classList.remove('sidebar-open'); openDrawer('calDrawer'); });
 $('#emailBtn').addEventListener('click', () => {
   if ($('#emailDrawer').hidden) openDrawer('emailDrawer');
   else closeAllDrawers();

@@ -46,7 +46,7 @@ import {
 import { listApprovals, listPendingApprovals, decideApproval } from './lib/sentinel.js';
 import { getEmailStore, ingestEmail, dismissEmail, dismissAllEmails } from './lib/email.js';
 import { getPublicMs365Status, startMs365DeviceLogin, disconnectMs365, syncMs365Emails } from './lib/ms365.js';
-import { listEvents, addEvent, deleteEvent, syncIcsCalendar } from './lib/calendar.js';
+import { listEvents, addEvent, updateEvent, deleteEvent, syncIcsCalendar } from './lib/calendar.js';
 import { listWatches, createWatch, deleteWatch, checkSingleWatch } from './lib/watchers.js';
 import {
   initMcpServers,
@@ -268,6 +268,7 @@ const server = http.createServer(async (req, res) => {
         notes: Array.isArray(notes) ? notes : [],
         reminders: (Array.isArray(reminders) ? reminders : []).filter((r) => !r.done),
         events,
+        nextEvent: events.length ? null : (await listEvents({ upcomingOnly: true, days: 366 }))[0] || null,
         tasks: (Array.isArray(tasks) ? tasks : []).filter((t) => t.status !== 'done'),
         jobs: Array.isArray(jobs) ? jobs : [],
         runningJobs: getRunningJobIds(),
@@ -483,7 +484,10 @@ const server = http.createServer(async (req, res) => {
 
     // Calendar / Events API
     if (req.method === 'GET' && pathname === '/api/calendar') {
-      return sendJson(res, 200, { events: await listEvents({ upcomingOnly: false }) });
+      return sendJson(res, 200, {
+        events: await listEvents({ upcomingOnly: false }),
+        linked: Boolean(String(CONFIG.calendar?.icsUrl || '').trim()),
+      });
     }
     if (req.method === 'POST' && pathname === '/api/calendar') {
       const body = await readJsonBody(req);
@@ -494,15 +498,30 @@ const server = http.createServer(async (req, res) => {
         location: body.location,
         notes: body.notes,
         category: body.category,
+        allDay: Boolean(body.allDay),
       });
+      broadcast({ type: 'calendar_updated' });
       return sendJson(res, 200, { ok: true, event: ev });
     }
     if (req.method === 'POST' && pathname === '/api/calendar/sync') {
-      return sendJson(res, 200, await syncIcsCalendar());
+      const r = await syncIcsCalendar();
+      broadcast({ type: 'calendar_updated' });
+      return sendJson(res, 200, r);
     }
     const calDelMatch = pathname.match(/^\/api\/calendar\/([A-Za-z0-9_-]+)$/);
     if (req.method === 'DELETE' && calDelMatch) {
-      return sendJson(res, 200, await deleteEvent(calDelMatch[1]));
+      const r = await deleteEvent(calDelMatch[1], { exact: true });
+      broadcast({ type: 'calendar_updated' });
+      return sendJson(res, 200, r);
+    }
+    if (req.method === 'PATCH' && calDelMatch) {
+      try {
+        const ev = await updateEvent(calDelMatch[1], await readJsonBody(req));
+        broadcast({ type: 'calendar_updated' });
+        return sendJson(res, 200, { ok: true, event: ev });
+      } catch (err) {
+        return sendJson(res, 400, { error: String(err.message || err) });
+      }
     }
 
     // Scheduled Jobs API

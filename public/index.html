@@ -39,7 +39,7 @@
       </div>
 
       <div class="side-section">
-        <div class="side-title">Agenda & Events <span class="count" id="eventCount"></span></div>
+        <div class="side-title">Agenda & Events <span class="side-links"><span class="count" id="eventCount"></span><button id="openCalLink" class="link-btn" title="Open the calendar">calendar</button></span></div>
         <div id="eventList" class="item-list"><div class="empty">No upcoming events</div></div>
       </div>
 
@@ -100,6 +100,9 @@
           </button>
           <button id="syncChatBtn" class="top-action-btn" title="Sync / reload latest messages">
             <span data-icon="refresh" data-size="16"></span>
+          </button>
+          <button id="calBtn" class="top-action-btn" title="Calendar">
+            <span data-icon="calendar" data-size="17"></span>
           </button>
           <button id="emailBtn" class="top-action-btn" title="Email Monitor & AI Triage">
             <span data-icon="mail" data-size="17"></span>
@@ -170,6 +173,47 @@
       </div>
     </div>
     <div id="notifList" class="drawer-body"><div class="empty">No notifications yet</div></div>
+  </div>
+
+  <!-- Calendar Drawer -->
+  <div id="calDrawer" class="drawer cal-drawer" hidden>
+    <div class="drawer-header">
+      <h3 class="inline-icon-text"><span data-icon="calendar" data-size="16"></span><span>Calendar</span></h3>
+      <button class="close-btn" data-close="calDrawer" aria-label="Close"><span data-icon="close" data-size="17"></span></button>
+    </div>
+    <div class="drawer-controls">
+      <div class="perm-row">
+        <div class="cal-nav">
+          <button id="calPrev" class="btn sm ghost" aria-label="Previous month">‹</button>
+          <span id="calMonthLabel" class="cal-month"></span>
+          <button id="calNext" class="btn sm ghost" aria-label="Next month">›</button>
+          <button id="calTodayBtn" class="btn sm ghost">Today</button>
+        </div>
+        <div class="btn-group">
+          <button id="calSyncBtn" class="btn sm" title="Re-read your linked calendar now" hidden>Sync</button>
+          <button id="calAddBtn" class="btn primary sm">+ Event</button>
+        </div>
+      </div>
+    </div>
+    <div class="drawer-body cal-body">
+      <div id="calGrid" class="cal-grid" role="grid"></div>
+      <form id="calForm" class="cal-form inline-form" hidden>
+        <div class="cal-form-title" id="calFormTitle">New event</div>
+        <input type="text" id="calTitle" placeholder="Title" maxlength="120" required />
+        <div class="cal-form-row">
+          <label>Date<input type="date" id="calDate" required /></label>
+          <label class="cal-time">Start<input type="time" id="calStart" /></label>
+          <label class="cal-time">End<input type="time" id="calEnd" /></label>
+        </div>
+        <label class="cal-check"><input type="checkbox" id="calAllDay" /> All day</label>
+        <input type="text" id="calLocation" placeholder="Location (optional)" maxlength="160" />
+        <textarea id="calNotes" rows="2" placeholder="Notes (optional)" maxlength="500"></textarea>
+        <div class="form-actions"><button type="submit" class="btn primary sm">Save</button><button type="button" id="calCancel" class="btn ghost sm">Cancel</button></div>
+      </form>
+      <div id="calDay" class="cal-day"></div>
+      <div id="calUpcoming" class="cal-day"></div>
+      <div id="calFoot" class="cal-foot"></div>
+    </div>
   </div>
 
   <!-- Email Triage Drawer -->
