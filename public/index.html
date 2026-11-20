@@ -535,6 +535,17 @@
 
         <!-- Tab 4: Sentinel -->
         <section class="tab-panel" data-panel="sentinel">
+          <div class="form-grid" style="margin-bottom:18px;">
+            <div class="section-sub" style="margin:0;">File access</div>
+            <label>Folder Pond's file tools can read and write
+              <input type="text" id="setFsRoot" placeholder="C:\Users\you\Documents" spellcheck="false" />
+              <small class="field-hint" id="fsRootHint"></small>
+            </label>
+            <div class="form-actions">
+              <button id="saveFsRootBtn" type="button" class="btn primary sm">Save folder</button>
+              <span id="fsRootResult" class="card-meta" style="align-self:center;"></span>
+            </div>
+          </div>
           <div class="form-grid">
             <label class="checkbox-field"><input type="checkbox" id="setSentinelEnabled" /> Enable Sentinel out-of-band permission gate</label>
             <div class="policy-grid" id="sentinelPoliciesGrid"></div>

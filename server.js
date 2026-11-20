@@ -316,7 +316,8 @@ const server = http.createServer(async (req, res) => {
     }
     if ((req.method === 'PATCH' || req.method === 'POST') && pathname === '/api/settings') {
       const patch = await readJsonBody(req);
-      const updated = await saveRuntimeSettings(patch);
+      let updated;
+      try { updated = await saveRuntimeSettings(patch); } catch (err) { return sendJson(res, 400, { error: String(err.message || err) }); }
       startProactiveLoops();
       broadcast({ type: 'settings_updated', settings: updated });
       return sendJson(res, 200, { ok: true, settings: updated });

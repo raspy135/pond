@@ -1316,7 +1316,27 @@ function switchHubTab(tabName) {
   $$('#hubTabs .tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tabName));
   $$('.tab-panel').forEach((p) => p.classList.toggle('active', p.dataset.panel === tabName));
   if (tabName === 'mcp') { loadMcpDiscovery(); loadSearchSettings(); }
+  if (tabName === 'sentinel') loadFileRoot();
 }
+
+// ---------- File access folder (Agent Hub → Sentinel) ----------
+async function loadFileRoot() {
+  const s = await fetch('/api/settings', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({}));
+  if (!s.fsRoot) return;
+  $('#setFsRoot').value = s.fsRoot;
+  $('#fsRootResult').textContent = '';
+  const pol = (name) => (s.sentinel?.policies?.[name]) || (name === 'delete_file' ? 'ask' : 'allow');
+  const how = (v) => (v === 'allow' ? 'without asking' : v === 'deny' ? 'never' : 'after asking you');
+  $('#fsRootHint').textContent = `In this folder and below, the AI writes files ${how(pol('write_file'))} and deletes ${how(pol('delete_file'))}. Pond Share: ${s.shareDir}`;
+}
+$('#saveFsRootBtn').addEventListener('click', async () => {
+  const out = $('#fsRootResult');
+  const r = await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fsRoot: $('#setFsRoot').value }) })
+    .then(async (x) => ({ ok: x.ok, ...(await x.json().catch(() => ({}))) })).catch(() => ({ ok: false, error: 'offline' }));
+  if (!r.ok) { out.textContent = `✗ ${r.error || 'Could not save'}`; out.dataset.state = 'bad'; return; }
+  await loadFileRoot();
+  out.textContent = '✓ Saved — applies right away'; out.dataset.state = 'good';
+});
 
 // ---------- Web search provider (Agent Hub → MCP & API) ----------
 async function loadSearchSettings() {
