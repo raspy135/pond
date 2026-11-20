@@ -1289,8 +1289,33 @@ async function loadMcpDiscovery() {
 function switchHubTab(tabName) {
   $$('#hubTabs .tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tabName));
   $$('.tab-panel').forEach((p) => p.classList.toggle('active', p.dataset.panel === tabName));
-  if (tabName === 'mcp') loadMcpDiscovery();
+  if (tabName === 'mcp') { loadMcpDiscovery(); loadSearchSettings(); }
 }
+
+// ---------- Web search provider (Agent Hub → MCP & API) ----------
+async function loadSearchSettings() {
+  const s = await fetch('/api/settings', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({}));
+  const se = s.search || {};
+  $('#searchBackend').value = se.backend || 'auto';
+  $('#searchTavilyKey').value = se.tavilyApiKey || '';
+  $('#searchTestResult').textContent = '';
+}
+$('#saveSearchBtn').addEventListener('click', async () => {
+  const body = { search: { backend: $('#searchBackend').value, tavilyApiKey: $('#searchTavilyKey').value.trim() } };
+  const r = await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => null);
+  showToast(r?.ok ? 'Web search settings saved' : 'Could not save web search settings');
+  await loadSearchSettings();
+});
+$('#testSearchBtn').addEventListener('click', async () => {
+  const out = $('#searchTestResult');
+  out.textContent = 'Searching…';
+  const r = await fetch('/api/search/test', { method: 'POST' }).then((x) => x.json()).catch(() => ({ ok: false, error: 'offline' }));
+  const name = { tavily: 'Tavily', deepseek: 'DeepSeek', bing: 'Bing' };
+  if (r.ok) out.textContent = `✓ ${name[r.backend] || r.backend} — ${r.count} result${r.count === 1 ? '' : 's'} (${r.ms} ms)`;
+  else if (r.fallbackFrom) out.textContent = `✗ ${name[r.fallbackFrom] || r.fallbackFrom} failed, used Bing instead — ${r.note || ''}`;
+  else out.textContent = `✗ ${r.backend ? `${name[r.backend] || r.backend}: ` : ''}${r.error || 'search failed'}${r.backend === 'bing' ? ' (no key needed, but it needs internet access)' : ''}`;
+  out.dataset.state = r.ok ? 'good' : 'bad';
+});
 
 let latestLlmConfig = null;
 

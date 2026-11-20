@@ -589,7 +589,8 @@ body {
 .artifact-embed iframe { transition: height .2s ease; }
 .artifact-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .field-hint { display: block; margin-top: 4px; font-size: .74rem; font-weight: 400; color: var(--muted); line-height: 1.35; }
-.field-hint[data-state="good"] { color: #16a34a; }
+.field-hint[data-state="good"], #searchTestResult[data-state="good"] { color: #16a34a; }
+#searchTestResult[data-state="bad"] { color: #dc2626; }
 .field-hint[data-state="bad"] { color: #dc2626; }
 .field-hint code { font-size: .72rem; }
 .embed-img { margin: 4px 0 10px; }

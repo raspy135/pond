@@ -60,6 +60,7 @@ import {
   shutdownMcpServers,
 } from './lib/mcp.js';
 import { listArtifacts, getArtifact, deleteArtifact, registerSettingsReloadHook } from './lib/tools.js';
+import { webSearch, activeSearchBackend } from './lib/web.js';
 import { detectPython, resolveRunFile } from './lib/python.js';
 import { ensureLlmConfig, getPublicLlmConfig, saveLlmConfig, resolveProfile, testLlmProfile, setActiveLlm } from './lib/llm-config.js';
 import { listSkills, getSkill, deleteSkill } from './lib/skills.js';
@@ -303,6 +304,13 @@ const server = http.createServer(async (req, res) => {
     }
 
     // Runtime Settings
+    if (req.method === 'POST' && pathname === '/api/search/test') {
+      const started = Date.now();
+      try {
+        const r = await webSearch('weather today', 3);
+        return sendJson(res, 200, { ok: !r.fallbackFrom, backend: r.backend, fallbackFrom: r.fallbackFrom || null, note: r.note || null, count: r.results.length, ms: Date.now() - started, sample: r.results[0]?.title || null });
+      } catch (err) { return sendJson(res, 200, { ok: false, backend: activeSearchBackend(), error: String(err.message || err) }); }
+    }
     if (req.method === 'GET' && pathname === '/api/settings') {
       return sendJson(res, 200, getPublicSettings());
     }

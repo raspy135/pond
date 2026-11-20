@@ -547,6 +547,29 @@
 
         <!-- Tab 5: MCP & API -->
         <section class="tab-panel" data-panel="mcp">
+          <div class="form-grid" style="margin-bottom:18px;">
+            <div class="section-sub" style="margin:0;">Web search</div>
+            <div class="two-col">
+              <label>Provider
+                <select id="searchBackend">
+                  <option value="auto">Auto (Tavily → DeepSeek → Bing)</option>
+                  <option value="tavily">Tavily</option>
+                  <option value="deepseek">DeepSeek</option>
+                  <option value="bing">Bing (no key, basic)</option>
+                </select>
+              </label>
+              <label>Tavily API key
+                <input type="password" id="searchTavilyKey" placeholder="tvly-…" autocomplete="off" />
+                <small class="field-hint">Get one at <a href="https://tavily.com" target="_blank" rel="noopener">tavily.com</a>. Each search uses 1 credit.</small>
+              </label>
+            </div>
+            <div class="form-actions">
+              <button id="saveSearchBtn" type="button" class="btn primary sm">Save</button>
+              <button id="testSearchBtn" type="button" class="btn sm">Test search</button>
+              <span id="searchTestResult" class="card-meta" style="align-self:center;"></span>
+            </div>
+          </div>
+
           <div class="perm-row" style="margin-bottom:8px;">
             <div class="section-sub" style="margin:0;">Auto-Discovered MCP Servers (Local Apps & Live Ports)</div>
             <div class="btn-group">

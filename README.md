@@ -176,6 +176,7 @@ Most settings live in **Agent Hub** (⚙️ in the app). The basics are in `.env
 | `PERSONA`, `PERSONA_CUSTOM` | Personality preset or your own text |
 | `MASCOT_PALETTE`, `MASCOT_COLOR` | Mascot color theme |
 | `PUSH_CONTACT` | Contact e-mail sent to push services (recommended for iOS) |
+| `TAVILY_API_KEY` | Better web search via [Tavily](https://tavily.com) — or paste the key in Agent Hub → MCP & API → Web search |
 
 See [`.env.example`](.env.example) for everything (email, quiet hours, Sentinel, search…).
 
