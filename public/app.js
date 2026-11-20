@@ -6,6 +6,19 @@ const messagesEl = $('#messages');
 
 // ---------- Routines ----------
 const pendingJobRuns = new Set(); // clicked ▶, server hasn't reported it running yet
+// Strip under the top bar while routines run — visible on phones too (no sidebar there).
+let runningJobsInfo = []; // [{ id, name, startedAt }]
+function renderActivityStrip() {
+  const strip = $('#activityStrip');
+  if (!strip) return;
+  if (!runningJobsInfo.length) { strip.hidden = true; return; }
+  const first = runningJobsInfo[0];
+  const secs = Math.max(0, Math.floor((Date.now() - (first.startedAt || Date.now())) / 1000));
+  const t = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+  $('#activityText').textContent = runningJobsInfo.length > 1 ? `${runningJobsInfo.length} routines running · ${t}` : `Running "${first.name}" · ${t}`;
+  strip.hidden = false;
+}
+setInterval(() => { if (runningJobsInfo.length) renderActivityStrip(); }, 1000);
 // "0 7 * * *" → "Daily 7:00", "30 8 * * 1-5" → "Weekdays 8:30"; anything else stays as written
 function cronLabel(expr) {
   const m = String(expr).trim().match(/^(\d{1,2}) (\d{1,2}) \* \* (\*|1-5|0,6|6,0)$/);
@@ -322,6 +335,7 @@ function handleNotificationJump(data) {
   if (!data) return;
   if (data.category === 'email') openDrawer('emailDrawer');
   else if (data.category === 'approval') renderSentinelBanner();
+  else if (data.sessionId && data.sessionId !== currentSessionId) switchSession(data.sessionId); // e.g. a routine's result
   if (data.id) {
     fetch('/api/notifications/read', {
       method: 'POST',
@@ -977,6 +991,9 @@ async function refreshState() {
     }
 
     // Routines / Scheduled Jobs
+    runningJobsInfo = Array.isArray(s.runningJobsInfo) ? s.runningJobsInfo : [];
+    for (const id of pendingJobRuns) if (!runningJobsInfo.some((x) => x.id === id)) { const pj = (s.jobs || []).find((x) => x.id === id); if (pj) runningJobsInfo.push({ id, name: pj.name, startedAt: Date.now() }); }
+    renderActivityStrip();
     const sideJobList = $('#sideJobList');
     const jobs = (s.jobs || []).filter((j) => j.enabled);
     $('#jobCount').textContent = jobs.length || '';
@@ -999,12 +1016,18 @@ async function refreshState() {
         run.disabled = running;
         run.onclick = async () => {
           pendingJobRuns.add(j.id);
+          if (!runningJobsInfo.some((x) => x.id === j.id)) { runningJobsInfo.push({ id: j.id, name: j.name, startedAt: Date.now() }); renderActivityStrip(); }
           run.disabled = true; run.innerHTML = '<span class="spinner"></span>'; run.title = 'Running…';
           div.querySelector('.sub').innerHTML = '<span class="job-running">Running…</span>';
           await fetch(`/api/jobs/${j.id}/run`, { method: 'POST' }).catch(() => {});
           setTimeout(() => { pendingJobRuns.delete(j.id); }, 5000); // server state takes over
         };
         div.appendChild(run);
+        if (j.sessionId) {
+          div.classList.add('job-item');
+          div.title = 'Open this routine\'s chat (every run, its steps and results)';
+          div.addEventListener('click', (e) => { if (!e.target.closest('button')) { switchSession(j.sessionId); document.body.classList.remove('sidebar-open'); } });
+        }
         sideJobList.appendChild(div);
       }
     }
@@ -2110,6 +2133,13 @@ function connectEvents() {
       return;
     }
 
+    if (payload.type === 'proactive' && payload.routine) {
+      if (payload.sessionId === currentSessionId && !attachedTurn) { lastRenderedSessionKey = ''; loadConversation({ force: false, silent: true }); }
+      loadSessions();
+      refreshState();
+      return;
+    }
+    if (payload.type === 'sessions_updated') { loadSessions(); if (payload.sessionId === currentSessionId) loadConversation({ force: false, silent: true }); return; }
     if (payload.type === 'proactive') {
       if (!payload.sessionId || payload.sessionId === currentSessionId) {
         const bodyEl = addMessage('assistant', '', { proactive: true, tag: payload.tag || '' });
@@ -2143,6 +2173,9 @@ function connectEvents() {
     }
 
     if (payload.type === 'job_started' || payload.type === 'job_finished') {
+      if (payload.type === 'job_started' && !runningJobsInfo.some((x) => x.id === payload.jobId)) runningJobsInfo.push({ id: payload.jobId, name: payload.name, startedAt: payload.startedAt || Date.now() });
+      if (payload.type === 'job_finished') runningJobsInfo = runningJobsInfo.filter((x) => x.id !== payload.jobId);
+      renderActivityStrip();
       if (payload.type === 'job_finished') {
         pendingJobRuns.delete(payload.jobId);
         if (payload.status === 'error') showToast(`Routine "${payload.name}" failed: ${payload.error || 'error'}`);
@@ -3034,6 +3067,11 @@ window.addEventListener('focus', () => syncTick());
 // Boot
 (async function init() {
   syncNotifPermissionUI();
+  const wantSession = new URLSearchParams(location.search).get('session');
+  if (wantSession) {
+    window.history.replaceState(null, '', location.pathname); // tidy URL (`history` here is the chat array)
+    await fetch('/api/sessions/activate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: wantSession }) }).catch(() => {});
+  }
   await loadConversation({ force: true });
   await loadSessions();
   await refreshState();
