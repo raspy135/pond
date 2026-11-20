@@ -214,8 +214,7 @@ several endpoints, context length, reasoning effort, and `"inputTypes": ["text",
 - **Sentinel** asks before side effects: sending email, running Python / shell, external MCP tools, saving skills,
   changing the personality, plugin tools that declare side effects. Approvals appear outside the chat, so a prompt
   injection can't fake one.
-- **Shell commands** (PowerShell on Windows) are off until you turn them on in Agent Hub → Sentinel; each command
-  then asks you first unless you change "Run commands". The AI can't loosen Sentinel rules without asking you.
+- The AI can't loosen Sentinel rules (e.g. switch a check to "allow") without asking you.
 - AI-generated HTML, 3D scenes and uploaded avatars render in **sandboxed iframes** with an opaque origin — they
   can't call Pond's API.
 - Plugins run inside Pond: they're protected against *breaking* it, not against being malicious. Only install

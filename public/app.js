@@ -1619,16 +1619,7 @@ async function loadFileRoot() {
   const pol = (name) => (s.sentinel?.policies?.[name]) || (name === 'delete_file' ? 'ask' : 'allow');
   const how = (v) => (v === 'allow' ? 'without asking' : v === 'deny' ? 'never' : 'after asking you');
   $('#fsRootHint').textContent = `In this folder and below, the AI writes files ${how(pol('write_file'))} and deletes ${how(pol('delete_file'))}. Pond Share: ${s.shareDir}`;
-  $('#setAllowShell').checked = Boolean(s.allowShell);
-  if (s.shellName) $('#shellName').textContent = s.shellName;
-  $('#allowShellHint').textContent = `Runs as you, starting in the folder above (pipes, git, any installed tool). Each command ${how(pol('run_command')) === 'without asking' ? 'runs without asking' : how(pol('run_command')) === 'never' ? 'is blocked' : 'asks you first'} — change that with "Run commands" below.`;
 }
-$('#setAllowShell').addEventListener('change', async (e) => {
-  const on = e.target.checked;
-  const r = await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ allowShell: on }) }).catch(() => null);
-  if (!r?.ok) { e.target.checked = !on; showToast('Could not save'); return; }
-  showToast(on ? `${$('#shellName').textContent} commands on — the next message re-reads the tool list once` : `${$('#shellName').textContent} commands off`);
-});
 $('#saveFsRootBtn').addEventListener('click', async () => {
   const out = $('#fsRootResult');
   const r = await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fsRoot: $('#setFsRoot').value }) })
@@ -1827,7 +1818,6 @@ async function loadHubData() {
   const policyLabels = {
     send_email: ['mail', 'Send Email'],
     run_python: ['terminal', 'Run Python'],
-    run_command: ['terminal', `Run commands (${settings.shellName || 'shell'})`],
     delete_file: ['trash', 'Delete File'],
     write_file: ['file', 'Write & Edit Files'],
     http_request_write: ['globe', 'External API Write'],
