@@ -791,7 +791,7 @@ html[data-look="plate"] .effort-btn.active { font-style: normal; text-decoration
 /* conversation: set like text on a page */
 html[data-look="plate"] .bubble { font-size: .9rem; }
 html[data-look="plate"] .msg-row.assistant .bubble { line-height: 1.58; }
-html[data-look="plate"] .msg-row.user .bubble { border-radius: 6px; }
+html[data-look="plate"] .msg-row.user .bubble { border-radius: 6px; line-height: 1.5; }
 html[data-look="plate"] .msg-body a { color: var(--text); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 html[data-look="plate"] .msg-body :is(h1, h2, h3, h4) { font-weight: 400; letter-spacing: .01em; }
 html[data-look="plate"] .msg-body h1 { font-size: 1.5rem; } html[data-look="plate"] .msg-body h2 { font-size: 1.25rem; }
