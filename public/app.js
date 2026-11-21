@@ -89,6 +89,8 @@ const prefs = {
   set mute(v) { localStorage.setItem('pond_mute', String(Boolean(v))); },
   get theme() { return localStorage.getItem('pond_theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); },
   set theme(v) { localStorage.setItem('pond_theme', v); },
+  get look() { return localStorage.getItem('pond_look') || 'plate'; },
+  set look(v) { localStorage.setItem('pond_look', v); },
 };
 
 const icon = (name, size = 15, cls = '') => (window.flatIcon ? window.flatIcon(name, size, cls) : '');
@@ -97,12 +99,25 @@ function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   document.querySelectorAll('.artifact iframe').forEach((f) => { try { f.contentWindow?.postMessage({ pondTheme: theme }, '*'); } catch { /* ignore */ } });
   prefs.theme = theme;
-  const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', theme === 'dark' ? '#17171f' : '#ffffff');
+  syncThemeColor();
   const tBtn = $('#themeBtn');
   if (tBtn) tBtn.innerHTML = icon(theme === 'dark' ? 'sun' : 'moon', 15);
 }
+// Look = overall style ("plate": TideLM-style serif plate; "classic": the original). Per device, like the theme.
+function applyLook(look) {
+  const v = look === 'classic' ? 'classic' : 'plate';
+  document.documentElement.setAttribute('data-look', v);
+  prefs.look = v;
+  syncThemeColor();
+}
+function syncThemeColor() {
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (!meta) return;
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  meta.setAttribute('content', document.documentElement.getAttribute('data-look') === 'plate' && bg ? bg : (prefs.theme === 'dark' ? '#17171f' : '#ffffff'));
+}
 if (window.hydrateIcons) window.hydrateIcons();
+applyLook(prefs.look);
 applyTheme(prefs.theme);
 
 function escapeHtml(s) {
@@ -1971,6 +1986,15 @@ async function loadPersonaPanel() {
 async function loadAppearancePanel() {
   const el = $('#hubAppearance');
   if (!el || !window.PondMascot) return;
+  if (!el.dataset.lookWired) {
+    el.dataset.lookWired = '1';
+    el.addEventListener('click', (e) => {
+      const b = e.target.closest('.look-opt');
+      if (!b) return;
+      applyLook(b.dataset.look);
+      el.querySelectorAll('.look-opt').forEach((x) => x.classList.toggle('primary', x === b));
+    });
+  }
   const settings = await fetch('/api/settings').then((r) => r.json()).catch(() => ({}));
   let sel = settings.ui?.mascotPalette || 'cyan';
   let color = settings.ui?.mascotColor || '#22c3e6';
@@ -1978,7 +2002,12 @@ async function loadAppearancePanel() {
   const ui = settings.ui || {};
   const usingImage = ui.avatarMode === 'image' && ui.avatarExt;
   el.innerHTML = `
-    <div class="section-sub" style="margin-top:0">Character</div>
+    <div class="section-sub" style="margin-top:0">Look <span class="card-meta">(this device)</span></div>
+    <div class="btn-group look-row" style="margin-bottom:14px">
+      <button type="button" class="btn sm look-opt${prefs.look === 'plate' ? ' primary' : ''}" data-look="plate">Plate — serif, quiet</button>
+      <button type="button" class="btn sm look-opt${prefs.look === 'classic' ? ' primary' : ''}" data-look="classic">Classic</button>
+    </div>
+    <div class="section-sub">Character</div>
     <div class="appearance-row" style="margin-bottom:14px">
       <div class="appearance-preview avatar-preview">${usingImage ? `<img src="/appearance/avatar?v=${ui.avatarVersion}" alt="" class="${ui.avatarCircle !== false ? 'circle' : ''}">` : ''}</div>
       <div style="flex:1;min-width:220px">
