@@ -1511,13 +1511,14 @@ async function loadEmailDrawer() {
     };
     card.querySelector('[data-act="dismiss"]').onclick = doDismiss;
     card.querySelector('[data-act="dismiss-btn"]').onclick = doDismiss;
+    // Each email action gets its own chat (like routines), so it never collides with a reply running elsewhere.
     card.querySelector('[data-act="summarize"]').onclick = () => {
       closeAllDrawers();
-      sendMessage(`Read email id "${m.id}" ("${m.subject}" from ${m.from}) and summarize what I need to know or do.`);
+      startChatWith(`✉ ${m.subject || 'Email'}`, `Read email id "${m.id}" ("${m.subject}" from ${m.from}) and summarize what I need to know or do.`);
     };
     card.querySelector('[data-act="reply"]').onclick = () => {
       closeAllDrawers();
-      sendMessage(`Read email id "${m.id}" ("${m.subject}" from ${m.from}) and draft a concise, polite reply for me to review.`);
+      startChatWith(`✉ Reply: ${m.subject || 'Email'}`, `Read email id "${m.id}" ("${m.subject}" from ${m.from}) and draft a concise, polite reply for me to review.`);
     };
     list.appendChild(card);
   }
@@ -2570,6 +2571,24 @@ fetch('/api/plugins/ui').then((r) => r.json()).then((u) => renderPluginStatus(u.
 $('#themeBtn').addEventListener('click', () => {
   applyTheme(prefs.theme === 'dark' ? 'light' : 'dark');
 });
+
+// Open a fresh chat with a title and send the first message in it.
+async function startChatWith(title, text) {
+  try {
+    const r = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+    const { session } = await r.json();
+    detachTurnView(); // a reply running in the chat we leave keeps going on the server
+    currentSessionId = session.id;
+    lastRenderedSessionKey = '';
+    history = [];
+    messagesEl.innerHTML = '';
+    loadSessions();
+    document.body.classList.remove('sidebar-open');
+    await sendMessage(text);
+  } catch {
+    showToast('Could not start a new chat');
+  }
+}
 
 $('#newChatBtn').addEventListener('click', async () => {
   try {

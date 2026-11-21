@@ -894,7 +894,8 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, await loadSessionsIndex());
     }
     if (req.method === 'POST' && pathname === '/api/sessions') {
-      const s = await createSession('New chat');
+      const body = await readJsonBody(req).catch(() => ({}));
+      const s = await createSession(String(body?.title || '').trim().slice(0, 80) || 'New chat');
       broadcast({ type: 'sessions' });
       broadcast({ type: 'session_switched', sessionId: s.id });
       return sendJson(res, 200, { session: { id: s.id, title: s.title, createdAt: s.createdAt, updatedAt: s.updatedAt } });
