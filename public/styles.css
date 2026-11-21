@@ -753,14 +753,16 @@ html[data-look="plate"][data-theme="dark"] {
 }
 /* Reading text in a clean sans for legibility; the serif is kept for titles and headings only. */
 html[data-look="plate"] body { font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif; font-variant-numeric: lining-nums tabular-nums; }
-html[data-look="plate"] :is(.msg-body h1, .msg-body h2, .msg-body h3, .drawer-header h3, .modal-header h2, .cal-month, .cal-form-title, .cal-day-head, .side-title, .section-sub, .model-menu-head) { font-family: var(--serif); }
+html[data-look="plate"] :is(.msg-body h1, .msg-body h2, .msg-body h3, .drawer-header h3, .modal-header h2, .cal-month) { font-family: var(--serif); } /* small labels stay sans: easier to read */
 html[data-look="plate"] :is(button, input, textarea, select) { font-family: inherit; }
 html[data-look="plate"] :focus-visible { outline: 1.5px solid var(--text); outline-offset: 2px; }
 
 /* labels: small caps, lowercase, spaced — like the plate's margin headings */
 html[data-look="plate"] :is(.side-title, .section-sub, .model-menu-head, .cal-day-head) {
-  text-transform: lowercase; font-variant: small-caps; letter-spacing: .07em; font-weight: 400; font-size: .92rem;
+  text-transform: uppercase; letter-spacing: .1em; font-weight: 600; font-size: .68rem; color: var(--muted);
 }
+html[data-look="plate"] .side-title .link-btn { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: .74rem; }
+html[data-look="plate"] .empty .link-btn { text-align: left; font-size: inherit; padding: 0; color: var(--text-soft); }
 html[data-look="plate"] .proactive-tag { background: none; padding: 0; color: var(--muted); font-weight: 400; text-transform: lowercase; font-variant: small-caps; letter-spacing: .07em; font-size: .86rem; }
 /* asides in italic */
 html[data-look="plate"] :is(.item .sub, .card-meta, .field-hint, .status-row.model, .mm-sub, .cal-ev-main .sub, .empty, .side-footer, .tool-image-label, .stopped-note, .cal-foot, .model-menu-note, #activityText) { font-style: italic; }
