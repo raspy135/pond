@@ -789,15 +789,15 @@ html[data-look="plate"] .effort-btn { background: none; border-radius: 12px; fon
 html[data-look="plate"] .effort-btn.active { font-style: normal; text-decoration: underline; text-underline-offset: 3px; background: none; }
 
 /* conversation: set like text on a page */
-html[data-look="plate"] .bubble { font-size: 1rem; }
-html[data-look="plate"] .msg-row.assistant .bubble { line-height: 1.62; }
+html[data-look="plate"] .bubble { font-size: .9rem; }
+html[data-look="plate"] .msg-row.assistant .bubble { line-height: 1.58; }
 html[data-look="plate"] .msg-row.user .bubble { border-radius: 6px; }
 html[data-look="plate"] .msg-body a { color: var(--text); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 html[data-look="plate"] .msg-body :is(h1, h2, h3, h4) { font-weight: 400; letter-spacing: .01em; }
 html[data-look="plate"] .msg-body h1 { font-size: 1.5rem; } html[data-look="plate"] .msg-body h2 { font-size: 1.25rem; }
 html[data-look="plate"] .msg-body :is(th) { font-weight: 400; font-variant: small-caps; letter-spacing: .04em; color: var(--muted); }
 html[data-look="plate"] .tool-trace summary { background: none; border-radius: 4px; }
-html[data-look="plate"] #input { border-radius: 6px; background: var(--panel); font-size: 1.02rem; }
+html[data-look="plate"] #input { border-radius: 6px; background: var(--panel); font-size: 1rem; } /* 16px: smaller makes iPhone zoom in */
 html[data-look="plate"][data-theme="dark"] #input { background: var(--panel-2); }
 html[data-look="plate"] #sendBtn { background: var(--text); color: var(--bg); }
 html[data-look="plate"] #attachBtn { background: none; }
