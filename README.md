@@ -29,6 +29,8 @@ machine, with your model. One Node.js process serves a web app you can install o
 
 **Gets things done**
 - Drives a real browser through Microsoft's Playwright MCP server — e.g. "unsubscribe me from these promos".
+- Works in your open Blender scenes (Blender 5.1+) through the official Blender Lab MCP server — setup offers it when Blender is installed.
+- Looks at images: image files, its own charts, and browser / Blender screenshots (with a vision-capable model).
 - Runs Python, reads and writes files, searches the web, schedules recurring routines and watches pages / feeds.
 - Every side effect (sending email, running code, external tools…) goes through **Sentinel**, an out-of-band approval gate.
 

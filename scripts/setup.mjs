@@ -9,6 +9,7 @@ import readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { migrateBrowserServers, isPlaywrightEntry, playwrightEntry, playwrightBrowser, installBrowserCommand, PLAYWRIGHT_PKG } from '../lib/browser-setup.js';
+import { findBlender, blenderSupported, blenderMcpBin, isBlenderEntry, blenderEntry, installBlenderMcp, BLENDER_ADDON_PAGE } from '../lib/blender-setup.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ENV = path.join(ROOT, '.env');
@@ -152,10 +153,35 @@ async function ensureBrowser({ canAsk }) {
   console.log(`${C.g('✓')} Browser automation on (${browser.label}) — Pond loads it only when a task needs a browser.`);
 }
 
+// ---------- Blender (optional): the official Blender Lab MCP server, when Blender 5.1+ is installed ----------
+async function ensureBlender({ canAsk }) {
+  const blender = findBlender();
+  if (!blender) return; // no Blender here: nothing to offer
+  const list = readMcp();
+  const have = list.find(isBlenderEntry);
+  if (have && existsSync(have.command)) { console.log(`${C.g('✓')} Blender connected (needs the MCP Server add-on running in Blender)`); return; }
+  const v = blender.version.join('.') || '?';
+  if (!blenderSupported(blender)) { console.log(C.d(`Blender ${v} found — Pond's Blender connection needs Blender 5.1 or newer.`)); return; }
+  if (!canAsk) { console.log(C.d(`Blender ${v} found. To let Pond work in it, run setup again and say yes to Blender.`)); return; }
+  if ((await ask(`Blender ${v} found. Let Pond work in your open Blender scenes? (Y/n)`, 'Y')).toLowerCase() === 'n') return;
+  if (!existsSync(VENV_PY)) { console.log(C.y('  Pond\'s Python environment is missing — finish the Python step first, then run setup again.')); return; }
+  process.stdout.write(C.d('Installing the official Blender MCP server into Pond\'s Python… '));
+  const r = installBlenderMcp(VENV_PY);
+  const bin = blenderMcpBin(VENV);
+  if (!r.ok || !existsSync(bin)) { console.log(C.y('failed')); console.log(C.d(`  ${r.error || 'blender-mcp was not installed'}`)); return; }
+  console.log(C.g('done'));
+  saveMcp([...list.filter((x) => !isBlenderEntry(x)), blenderEntry(bin)]);
+  console.log(`${C.g('✓')} Blender connected — Pond loads it only when a task needs Blender.`);
+  console.log(`  ${C.c('One step in Blender (once):')} open ${BLENDER_ADDON_PAGE}`);
+  console.log('  and drag the "Drag and Drop into Blender" box into Blender twice (1st adds the Blender Lab repository, 2nd installs the add-on).');
+  console.log('  Also turn on Preferences → System → Network → Allow Online Access. Keep Blender open while Pond works in it.');
+}
+
 if (!interactive) {
   if (!args['base-url']) console.log(C.d('Skipping interactive setup (no terminal). Edit .env or use Agent Hub → LLM Engine later.'));
   await ensurePython();
   await ensureBrowser({ canAsk: false });
+  await ensureBlender({ canAsk: false });
   process.exit(0);
 }
 
@@ -197,7 +223,7 @@ const isCloud = (u) => { try { return CLOUD.test(new URL(u).hostname); } catch {
 const hasKey = curKey && !curKey.startsWith('sk-your');
 if (curBase && curModel && (hasKey || !isCloud(curBase))) {
   const keep = (await ask(`Current: ${C.c(curModel)} at ${C.c(curBase)}. Keep it? (Y/n)`, 'Y')).toLowerCase();
-  if (keep !== 'n') { console.log(C.g('✓ Keeping current model settings')); await ensurePython(); await ensureBrowser({ canAsk: true }); process.exit(0); }
+  if (keep !== 'n') { console.log(C.g('✓ Keeping current model settings')); await ensurePython(); await ensureBrowser({ canAsk: true }); await ensureBlender({ canAsk: true }); process.exit(0); }
 }
 
 process.stdout.write(C.d('Looking for local model servers… '));
@@ -217,7 +243,7 @@ const choices = [
 ];
 choices.forEach((c, i) => console.log(`  ${C.c(String(i + 1))}) ${c.label}`));
 const pick = choices[Math.max(0, Math.min(choices.length - 1, Number(await ask('Choose', '1')) - 1))];
-if (pick.skip) { console.log(C.y('Skipped. Pond will start, but needs a model before it can chat.')); await ensurePython(); await ensureBrowser({ canAsk: true }); process.exit(0); }
+if (pick.skip) { console.log(C.y('Skipped. Pond will start, but needs a model before it can chat.')); await ensurePython(); await ensureBrowser({ canAsk: true }); await ensureBlender({ canAsk: true }); process.exit(0); }
 
 let baseUrl = pick.baseUrl;
 if (pick.custom) {
@@ -261,3 +287,4 @@ applyConfig({ baseUrl, apiKey, model, location });
 console.log(`\n${C.g('✓ Saved to .env')}: ${C.c(model)} at ${C.c(baseUrl)}${location ? ` · ${location}` : ''}`);
 await ensurePython();
 await ensureBrowser({ canAsk: true });
+await ensureBlender({ canAsk: true });
