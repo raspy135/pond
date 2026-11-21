@@ -165,11 +165,10 @@ async function ensureBlender({ canAsk }) {
   if (!canAsk) { console.log(C.d(`Blender ${v} found. To let Pond work in it, run setup again and say yes to Blender.`)); return; }
   if ((await ask(`Blender ${v} found. Let Pond work in your open Blender scenes? (Y/n)`, 'Y')).toLowerCase() === 'n') return;
   if (!existsSync(VENV_PY)) { console.log(C.y('  Pond\'s Python environment is missing — finish the Python step first, then run setup again.')); return; }
-  process.stdout.write(C.d('Installing the official Blender MCP server into Pond\'s Python… '));
+  console.log(C.d('Installing the official Blender MCP server into Pond\'s Python (downloads from blender.org; can take a minute)…'));
   const r = installBlenderMcp(VENV_PY);
   const bin = blenderMcpBin(VENV);
-  if (!r.ok || !existsSync(bin)) { console.log(C.y('failed')); console.log(C.d(`  ${r.error || 'blender-mcp was not installed'}`)); return; }
-  console.log(C.g('done'));
+  if (!r.ok || !existsSync(bin)) { console.log(C.y('Blender server install failed.')); console.log(C.d(`  ${r.error || 'blender-mcp was not installed'}`)); return; }
   saveMcp([...list.filter((x) => !isBlenderEntry(x)), blenderEntry(bin)]);
   console.log(`${C.g('✓')} Blender connected — Pond loads it only when a task needs Blender.`);
   console.log(`  ${C.c('One step in Blender (once):')} open ${BLENDER_ADDON_PAGE}`);
