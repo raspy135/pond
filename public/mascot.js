@@ -6,6 +6,12 @@
   let uid = 0;
 
   const CSS = `
+.pm-icosa{color:inherit;--pm-wire:var(--pm-body)}
+html[data-look=plate] .pm-icosa{--pm-wire:currentColor}
+.pm-icosa line{stroke:var(--pm-wire);vector-effect:non-scaling-stroke}
+.pm-icosa circle{fill:var(--pm-wire)}
+.pm-icosa circle.pm-ico-lit{fill:var(--pm-stain,#e8749f)}
+.pm-icosa .pm-move{transform-origin:50% 50%}
 :root{--pm-body:#22c3e6;--pm-stem:#1aa6c8;--pm-tip:#ffd166;--pm-drop:#5fd8f0;--pm-on:#0f172a}
 .pond-mascot{display:inline-block;width:100%;height:100%;line-height:0}
 .pond-mascot svg{width:100%;height:100%;overflow:visible}
@@ -136,6 +142,83 @@
     return el;
   }
 
+  // ---------- Icosahedron character: a wireframe regular icosahedron, turning slowly like a specimen on a plate ----------
+  // Moods drive the motion: happy = slow turn · thinking = fast spin · wow = one vertex lit in a stain colour + hop ·
+  // sleepy = nearly still and faint · sad = slow, tipped forward. Back edges are fainter and thinner (depth cue).
+  const PHI = (1 + Math.sqrt(5)) / 2;
+  const ICO_V = [[-1, PHI, 0], [1, PHI, 0], [-1, -PHI, 0], [1, -PHI, 0], [0, -1, PHI], [0, 1, PHI], [0, -1, -PHI], [0, 1, -PHI], [PHI, 0, -1], [PHI, 0, 1], [-PHI, 0, -1], [-PHI, 0, 1]]
+    .map((v) => { const l = Math.hypot(...v); return v.map((x) => x / l); });
+  const ICO_E = [];
+  for (let i = 0; i < 12; i++) for (let j = i + 1; j < 12; j++) {
+    const d = Math.hypot(ICO_V[i][0] - ICO_V[j][0], ICO_V[i][1] - ICO_V[j][1], ICO_V[i][2] - ICO_V[j][2]);
+    if (d < 1.1) ICO_E.push([i, j]); // edge length of the unit icosahedron ≈ 1.05
+  }
+  const ICO_SPEED = { happy: 0.32, thinking: 2.4, wow: 1.1, sleepy: 0.06, sad: 0.16 };
+  const icoState = new WeakMap();
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  function icoDraw(el, t) {
+    const st = icoState.get(el);
+    if (!st) return;
+    const mood = el.dataset.mood || 'happy';
+    const a = st.phase + t * (ICO_SPEED[mood] ?? 0.3);
+    const tilt = mood === 'sad' ? 0.75 : 0.42;
+    const ca = Math.cos(a), sa = Math.sin(a), ct = Math.cos(tilt), stt = Math.sin(tilt);
+    const P = ICO_V.map(([x, y, z]) => {
+      const x1 = x * ca + z * sa, z1 = -x * sa + z * ca; // turn about the vertical axis
+      const y2 = y * ct - z1 * stt, z2 = y * stt + z1 * ct; // tip toward the viewer
+      return [x1 * 38, -y2 * 38, z2];
+    });
+    const dim = mood === 'sleepy' ? 0.5 : 1;
+    ICO_E.forEach(([i, j], k) => {
+      const ln = st.lines[k], z = (P[i][2] + P[j][2]) / 2; // -1 back … 1 front
+      ln.setAttribute('x1', P[i][0].toFixed(2)); ln.setAttribute('y1', P[i][1].toFixed(2));
+      ln.setAttribute('x2', P[j][0].toFixed(2)); ln.setAttribute('y2', P[j][1].toFixed(2));
+      ln.setAttribute('stroke-opacity', ((0.28 + 0.72 * (z + 1) / 2) * dim).toFixed(2));
+      ln.setAttribute('stroke-width', (0.7 + 0.9 * (z + 1) / 2).toFixed(2)); // px (non-scaling): crisp at 34 px and 100 px
+    });
+    P.forEach((p, i) => {
+      const c = st.dots[i];
+      c.setAttribute('cx', p[0].toFixed(2)); c.setAttribute('cy', p[1].toFixed(2));
+      const lit = mood === 'wow' && i === st.litVertex;
+      c.setAttribute('r', lit ? 5 : (1.4 + 1.6 * (p[2] + 1) / 2).toFixed(2));
+      c.setAttribute('class', lit ? 'pm-ico-lit' : '');
+      c.setAttribute('fill-opacity', lit ? 1 : ((0.3 + 0.7 * (p[2] + 1) / 2) * dim).toFixed(2));
+    });
+  }
+  let icoRaf = 0;
+  const icoStart = performance.now();
+  function icoLoop(now) {
+    icoRaf = 0;
+    const t = (now - icoStart) / 1000;
+    const live = document.querySelectorAll('.pm-icosa.pm-alive, .pm-icosa.pm-working, .pm-icosa.pm-preview');
+    live.forEach((el) => icoDraw(el, t));
+    if (live.length && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) icoRaf = requestAnimationFrame(icoLoop);
+  }
+  const icoKick = () => { if (!icoRaf) icoRaf = requestAnimationFrame(icoLoop); };
+  function createIcosa(mood = 'happy') {
+    injectCss();
+    const el = document.createElement('span');
+    el.className = 'pond-mascot pm-icosa';
+    el.dataset.mood = MOODS.includes(mood) ? mood : 'happy';
+    const svgEl = document.createElementNS(SVGNS, 'svg');
+    svgEl.setAttribute('viewBox', '-50 -50 100 100');
+    svgEl.setAttribute('aria-hidden', 'true');
+    const g = document.createElementNS(SVGNS, 'g');
+    const lines = ICO_E.map(() => { const l = document.createElementNS(SVGNS, 'line'); l.setAttribute('stroke-linecap', 'round'); g.appendChild(l); return l; });
+    const dots = ICO_V.map(() => { const c = document.createElementNS(SVGNS, 'circle'); g.appendChild(c); return c; });
+    svgEl.appendChild(g);
+    const move = document.createElement('span');
+    move.className = 'pm-move';
+    move.appendChild(svgEl);
+    el.appendChild(move);
+    icoState.set(el, { lines, dots, phase: Math.random() * Math.PI * 2, litVertex: Math.floor(Math.random() * 12) });
+    icoDraw(el, 0); // a still pose for history avatars; live ones turn
+    if (el.dataset.mood === 'thinking') el.classList.add('pm-working');
+    new MutationObserver(icoKick).observe(el, { attributes: true, attributeFilter: ['class', 'data-mood'] });
+    icoKick();
+    return el;
+  }
+
   // A user-supplied image in place of the mascot (Agent Hub → Appearance). Moods only drive motion.
   function createImage(url, mood = 'happy', { circle = true } = {}) {
     injectCss();
@@ -165,7 +248,7 @@
   function act(el, move) {
     if (!el || el.classList.contains('pm-working') || el.dataset.acting) return;
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-    if (move === 'spin' && el.classList.contains('pm-image')) move = 'jump'; // the ball-turn needs the mascot's face layers
+    if (move === 'spin' && (el.classList.contains('pm-image') || el.classList.contains('pm-icosa'))) move = 'jump'; // the ball-turn needs the mascot's face layers
     const cls = move === 'spin' ? 'pm-spin' : 'pm-jump';
     el.dataset.acting = '1';
     el.classList.add(cls);
@@ -232,5 +315,5 @@
     return p;
   }
 
-  window.PondMascot = { create, createImage, setMood, act, setPalette, resolvePalette, PALETTES, MOODS };
+  window.PondMascot = { create, createImage, createIcosa, setMood, act, setPalette, resolvePalette, PALETTES, MOODS };
 })();

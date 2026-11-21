@@ -605,7 +605,9 @@ function addMessage(role, text, { proactive = false, tag = '' } = {}) {
       const mood = proactive ? 'wow' : 'happy';
       const m = uiState.avatarMode === 'image' && uiState.avatarExt
         ? window.PondMascot.createImage(`/appearance/avatar?v=${uiState.avatarVersion || 0}`, mood, { circle: uiState.avatarCircle !== false })
-        : window.PondMascot.create(mood, { compact: true });
+        : uiState.avatarMode === 'icosa' && window.PondMascot.createIcosa
+          ? window.PondMascot.createIcosa(mood)
+          : window.PondMascot.create(mood, { compact: true });
       avatar.appendChild(m);
       makeAliveMascot(m);
     } else {
@@ -918,7 +920,8 @@ async function refreshState() {
       const key = `${s.ui.mascotPalette}|${s.ui.mascotColor}`;
       if (key !== appliedPaletteKey) { appliedPaletteKey = key; window.PondMascot.setPalette(s.ui.mascotPalette, s.ui.mascotColor); }
       const avatarKey = `${s.ui.avatarMode}|${s.ui.avatarVersion}|${s.ui.avatarCircle}`;
-      if (appliedAvatarKey !== null && avatarKey !== appliedAvatarKey) loadConversation({ force: true }); // re-render avatars
+      // re-render avatars when the character changes — and on first load if it isn't the default splash (the chat was drawn before settings arrived)
+      if (avatarKey !== appliedAvatarKey && (appliedAvatarKey !== null || (s.ui.avatarMode && s.ui.avatarMode !== 'mascot'))) loadConversation({ force: true });
       appliedAvatarKey = avatarKey;
     }
     modelInputTypes = Array.isArray(s.inputTypes) ? s.inputTypes : ['text'];
@@ -2001,6 +2004,8 @@ async function loadAppearancePanel() {
   const names = Object.keys(window.PondMascot.PALETTES);
   const ui = settings.ui || {};
   const usingImage = ui.avatarMode === 'image' && ui.avatarExt;
+  const usingIcosa = ui.avatarMode === 'icosa';
+  const makeChar = (opts) => (usingIcosa ? window.PondMascot.createIcosa('happy') : window.PondMascot.create('happy', opts));
   el.innerHTML = `
     <div class="section-sub" style="margin-top:0">Look <span class="card-meta">(this device)</span></div>
     <div class="btn-group look-row" style="margin-bottom:14px">
@@ -2012,11 +2017,12 @@ async function loadAppearancePanel() {
       <div class="appearance-preview avatar-preview">${usingImage ? `<img src="/appearance/avatar?v=${ui.avatarVersion}" alt="" class="${ui.avatarCircle !== false ? 'circle' : ''}">` : ''}</div>
       <div style="flex:1;min-width:220px">
         <div class="btn-group">
-          <label class="btn sm">Upload image…<input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" data-act="upload" hidden></label>
-          ${usingImage ? '<button class="btn sm" data-act="mascot">Use Pond mascot</button>' : ''}
+          <button type="button" class="btn sm${!usingImage && !usingIcosa ? ' primary' : ''}" data-act="mascot">Ink splash</button>
+          <button type="button" class="btn sm${usingIcosa ? ' primary' : ''}" data-act="icosa">Icosahedron</button>
+          <label class="btn sm${usingImage ? ' primary' : ''}">Upload image…<input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" data-act="upload" hidden></label>
         </div>
         <label class="checkbox-field" style="margin-top:6px"><input type="checkbox" data-act="circle" ${ui.avatarCircle !== false ? 'checked' : ''}> Crop to circle</label>
-        <div class="card-meta">${usingImage ? 'Using your image. Color below still sets the send button.' : 'Using the Pond mascot. PNG, JPG, WebP, GIF or SVG, up to 2 MB.'}</div>
+        <div class="card-meta">${usingImage ? 'Using your image. Color below still sets the send button.' : usingIcosa ? 'A wireframe icosahedron. It turns faster while Pond works. In the Plate look it is drawn in ink; in Classic, in the color below.' : 'The Pond ink splash. Or upload a PNG, JPG, WebP, GIF or SVG, up to 2 MB.'}</div>
       </div>
     </div>
     <div class="section-sub">Color</div>
@@ -2030,8 +2036,8 @@ async function loadAppearancePanel() {
         <div class="btn-group" style="margin-top:8px"><button class="btn primary sm" data-act="save">Save</button></div>
       </div>
     </div>`;
-  const big = window.PondMascot.create('happy'); big.classList.add('pm-alive'); // color preview (mascot)
-  const small = window.PondMascot.create('happy', { compact: true }); small.classList.add('pm-alive');
+  const big = makeChar(); big.classList.add('pm-alive', 'pm-preview'); // color preview
+  const small = makeChar({ compact: true }); small.classList.add('pm-alive', 'pm-preview');
   el.querySelector('.appearance-preview:not(.avatar-preview):not(.small)').appendChild(big);
   el.querySelector('.appearance-preview.small').appendChild(small);
   const row = el.querySelectorAll('.appearance-row')[1];
@@ -2042,7 +2048,13 @@ async function loadAppearancePanel() {
     el.querySelector('.appearance-name').textContent = sel === 'custom' ? `Custom ${color}` : sel[0].toUpperCase() + sel.slice(1);
   };
   el.querySelectorAll('.swatch[data-p]').forEach((b) => { b.onclick = () => { sel = b.dataset.p; show(); window.PondMascot.act(big, 'jump'); }; });
-  if (!usingImage) { const pv = el.querySelector('.avatar-preview'); const m = window.PondMascot.create('happy'); m.classList.add('pm-alive'); pv.appendChild(m); }
+  if (!usingImage) { const pv = el.querySelector('.avatar-preview'); const m = makeChar(); m.classList.add('pm-alive', 'pm-preview'); pv.appendChild(m); }
+  const setChar = async (mode) => {
+    await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ui: { avatarMode: mode } }) }).catch(() => {});
+    await refreshState();
+    loadAppearancePanel();
+  };
+  el.querySelector('[data-act="icosa"]').onclick = () => setChar('icosa');
   el.querySelector('[data-act="upload"]').onchange = async (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -2067,7 +2079,10 @@ async function loadAppearancePanel() {
     await refreshState(); loadAppearancePanel();
   };
   const mascotBtn = el.querySelector('[data-act="mascot"]');
-  if (mascotBtn) mascotBtn.onclick = async () => { await fetch('/api/appearance/avatar', { method: 'DELETE' }); showToast('Back to the Pond mascot'); await refreshState(); loadAppearancePanel(); };
+  if (mascotBtn) mascotBtn.onclick = async () => {
+    if (usingImage) { await fetch('/api/appearance/avatar', { method: 'DELETE' }); showToast('Back to the Pond mascot'); await refreshState(); loadAppearancePanel(); return; }
+    setChar('mascot');
+  };
   el.querySelector('[data-act="circle"]').onchange = async (e) => {
     await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ui: { avatarCircle: e.target.checked } }) });
     await refreshState(); loadAppearancePanel();
