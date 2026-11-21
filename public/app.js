@@ -815,7 +815,17 @@ function createTurnView({ startedAt = Date.now() } = {}) {
       v.hadToolSinceText = false;
       v.acc += payload.text;
       bubbleBody.dataset.rawText = v.acc;
-      bubbleBody.textContent = v.acc;
+      // Styled as it arrives: re-render the markdown a few times a second (less often for very long replies).
+      if (!v.mdTimer) {
+        v.mdTimer = setTimeout(() => {
+          v.mdTimer = null;
+          if (v.finished) return;
+          bubbleBody.classList.remove('streaming');
+          bubbleBody.innerHTML = window.renderMarkdown ? window.renderMarkdown(v.acc, { streaming: true }) : escapeHtml(v.acc);
+          inkEmoji(bubbleBody);
+          follow();
+        }, v.acc.length > 30000 ? 400 : 90);
+      }
       follow();
     } else if (payload.type === 'tool') {
       if (v.acc) v.hadToolSinceText = true;

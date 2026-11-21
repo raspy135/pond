@@ -167,7 +167,10 @@ ${user}
     return `<a class="embed-file" href="${u}" target="_blank" rel="noopener"><span class="embed-file-kind">${esc(kind)}</span><span class="embed-file-name">${esc(title)}</span><span class="embed-file-open">Open ↗</span></a>`;
   }
 
-  function renderMarkdown(src) {
+  // opts.streaming: a reply still arriving — pages / 3D / embeds are shown as plain code or links until it's done,
+  // so live iframes aren't rebuilt on every token.
+  function renderMarkdown(src, opts = {}) {
+    const streaming = Boolean(opts.streaming);
     const lines = String(src).split('\n');
     const out = [];
     let i = 0;
@@ -192,7 +195,9 @@ ${user}
         while (i < lines.length && !/^```\s*$/.test(lines[i])) { buf.push(lines[i]); i++; }
         i++; // skip closing fence
         const code = buf.join('\n');
-        if (lang === 'threejs' || lang === 'three') {
+        if (streaming && /^(threejs|three|html)$/.test(lang)) {
+          out.push(`<pre class="streaming-artifact"><code class="lang-${esc(lang)}">${esc(code)}</code></pre>`);
+        } else if (lang === 'threejs' || lang === 'three') {
           const hm = code.match(/^\s*\/\/\s*height:\s*(\d{2,4})/);
           const h = Math.max(200, Math.min(900, hm ? Number(hm[1]) : 380));
           out.push(`<div class="artifact artifact-3d"><div class="artifact-bar"><span>3D · three.js · <span class="artifact-id">${htmlId(code)}</span></span><span class="artifact-actions"><button type="button" class="artifact-btn" data-act="expand" title="Expand">⤢</button><button type="button" class="artifact-btn" data-act="code" title="Show code">&lt;/&gt;</button></span></div><iframe sandbox="allow-scripts" loading="lazy" style="height:${h}px" srcdoc="${esc(threeSrcdoc(code))}"></iframe><pre class="artifact-code" hidden><code class="lang-js">${esc(code)}</code></pre></div>`);
@@ -255,7 +260,7 @@ ${user}
       }
 
       // a Pond file link alone on its line → embedded preview
-      const embed = embedFor(line);
+      const embed = streaming ? null : embedFor(line);
       if (embed) { flushPara(); out.push(embed); i++; continue; }
 
       para.push(line);
