@@ -3,6 +3,7 @@
   const PATHS = {
     menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
+    branch: '<path d="M6 3v10a5 5 0 0 0 5 5h7"/><path d="m15 15 3 3-3 3"/><circle cx="6" cy="3.5" r="0.5"/>',
     close: '<path d="M18 6 6 18M6 6l12 12"/>',
     check: '<path d="M20 6 9 17l-5-5"/>',
     'check-circle': '<circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/>',

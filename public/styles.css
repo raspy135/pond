@@ -309,6 +309,7 @@ body {
 }
 .msg-copy-btn:hover { background: var(--panel-2); border-color: var(--border); color: var(--text); }
 .msg-copy-btn.copied { color: var(--ok); }
+.msg-branch-btn { width: auto; gap: 4px; padding: 0 7px; font-size: .72rem; }
 @media (hover: none) {
   .msg-actions { opacity: .75; }
 }

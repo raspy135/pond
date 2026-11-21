@@ -647,6 +647,17 @@ function addMessage(role, text, { proactive = false, tag = '' } = {}) {
   copyBtn.innerHTML = icon('copy', 13);
   copyBtn.onclick = () => copyText(body.dataset.rawText || body.textContent || '', copyBtn);
   actions.appendChild(copyBtn);
+  if (proactive && role === 'assistant') {
+    // Talk about a check-in / alert in its own chat, so replying doesn't pull the current conversation off course.
+    const br = document.createElement('button');
+    br.type = 'button';
+    br.className = 'msg-copy-btn msg-branch-btn';
+    br.title = 'Continue in a new chat';
+    br.setAttribute('aria-label', 'Continue in a new chat');
+    br.innerHTML = `${icon('branch', 13)}<span>New chat</span>`;
+    br.onclick = () => continueInNewChat(body.dataset.rawText || body.textContent || '', tag);
+    actions.appendChild(br);
+  }
   col.appendChild(actions);
 
   row.appendChild(col);
@@ -2708,6 +2719,21 @@ fetch('/api/plugins/ui').then((r) => r.json()).then((u) => renderPluginStatus(u.
 $('#themeBtn').addEventListener('click', () => {
   applyTheme(prefs.theme === 'dark' ? 'light' : 'dark');
 });
+
+async function continueInNewChat(text, tag = '') {
+  const first = String(text).replace(/[#*_`>\[\]]/g, '').replace(/\s+/g, ' ').trim();
+  const title = `↳ ${first.slice(0, 50)}${first.length > 50 ? '…' : ''}`;
+  try {
+    const r = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, carry: { content: text, tag, at: new Date().toISOString() } }) });
+    const { session } = await r.json();
+    detachTurnView();
+    currentSessionId = null; // force switchSession to load it
+    await switchSession(session.id);
+    input.focus();
+  } catch {
+    showToast('Could not start a new chat');
+  }
+}
 
 // Open a fresh chat with a title and send the first message in it.
 async function startChatWith(title, text) {

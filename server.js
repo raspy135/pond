@@ -895,7 +895,17 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && pathname === '/api/sessions') {
       const body = await readJsonBody(req).catch(() => ({}));
-      const s = await createSession(String(body?.title || '').trim().slice(0, 80) || 'New chat');
+      let s = await createSession(String(body?.title || '').trim().slice(0, 80) || 'New chat');
+      // "Continue in a new chat" from a proactive message: the new chat opens with that message, and the model
+      // gets it as context on its first user turn (a chat may not start with an assistant message in the API).
+      const carry = body?.carry && typeof body.carry.content === 'string' ? body.carry : null;
+      if (carry) {
+        const text = carry.content.slice(0, 8000);
+        s = await loadSession(s.id);
+        s.carried = `<carried_over from="${String(carry.tag || 'check-in').replace(/[<>"]/g, '').slice(0, 40)}"${carry.at ? ` at="${String(carry.at).slice(0, 30)}"` : ''}>\nYou (Pond) sent the user this message earlier; they opened this chat to talk about it:\n${text}\n</carried_over>`;
+        s.messages.push({ role: 'assistant', content: text, proactive: true, tag: String(carry.tag || '').slice(0, 60), ts: new Date().toISOString() });
+        await saveSession(s);
+      }
       broadcast({ type: 'sessions' });
       broadcast({ type: 'session_switched', sessionId: s.id });
       return sendJson(res, 200, { session: { id: s.id, title: s.title, createdAt: s.createdAt, updatedAt: s.updatedAt } });
