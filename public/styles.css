@@ -734,10 +734,11 @@ a.artifact-btn { text-decoration: none; }
    On by default; Agent Hub → Appearance → Look switches back to "Classic". Set on <html data-look="plate">.
    ====================================================================================================== */
 html[data-look="plate"] {
-  --bg: #ece7dc; --panel: #f4f0e7; --panel-2: #e4ded1; --border: #d3ccbd;
-  --text: #2b2823; --text-soft: #4b463e; --muted: #7a7366;
-  --accent: #2b2823; --accent-soft: rgba(43, 40, 35, .07);
-  --user-bubble: #e2dbcd; --code-bg: #e6e0d4; --shadow: rgba(40, 32, 20, .12);
+  /* light: neutral light gray, no warm tint */
+  --bg: #efefef; --panel: #f7f7f7; --panel-2: #e5e5e5; --border: #d4d4d4;
+  --text: #232323; --text-soft: #464646; --muted: #737373;
+  --accent: #232323; --accent-soft: rgba(0, 0, 0, .055);
+  --user-bubble: #e2e2e2; --code-bg: #e8e8e8; --shadow: rgba(0, 0, 0, .1);
   --ok: #2e8a57; --danger: #b3446a; --danger-bg: rgba(179, 68, 106, .1); --danger-text: #9a3157;
   --warn: #a86f12; --warn-bg: rgba(168, 111, 18, .12);
   --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", "URW Palladio L", P052, Georgia, "DejaVu Serif", serif;
