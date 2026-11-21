@@ -744,10 +744,11 @@ html[data-look="plate"] {
   --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", "URW Palladio L", P052, Georgia, "DejaVu Serif", serif;
 }
 html[data-look="plate"][data-theme="dark"] {
-  --bg: #34373a; --panel: #3a3d41; --panel-2: #2f3134; --border: #4f5459;
-  --text: #f1ebdd; --text-soft: #d2cbbc; --muted: #a59f92;
-  --accent: #f1ebdd; --accent-soft: rgba(241, 235, 221, .07);
-  --user-bubble: #44484d; --code-bg: #2b2d30; --shadow: rgba(0, 0, 0, .35);
+  /* dark: neutral gray stage, neutral light ink (no warm or blue tint) */
+  --bg: #333333; --panel: #3a3a3a; --panel-2: #2d2d2d; --border: #4d4d4d;
+  --text: #ececec; --text-soft: #cdcdcd; --muted: #9e9e9e;
+  --accent: #ececec; --accent-soft: rgba(255, 255, 255, .07);
+  --user-bubble: #444444; --code-bg: #2a2a2a; --shadow: rgba(0, 0, 0, .35);
   --ok: #5fd08f; --danger: #e8749f; --danger-bg: rgba(232, 116, 159, .12); --danger-text: #f2a7c2;
   --warn: #e3b85e; --warn-bg: rgba(227, 184, 94, .12);
 }
