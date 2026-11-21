@@ -822,3 +822,8 @@ html[data-look="plate"] .cal-ev { background: none; border-radius: 0; border-bot
 html[data-look="plate"] .cal-ev.ics { border-left-color: #6fa8dc; }
 html[data-look="plate"] .cal-form { background: none; border-radius: 6px; }
 html[data-look="plate"] .look-row .look-opt { font-style: italic; }
+
+/* "Ink" emoji (Plate look): line icons in the text colour, other emoji as quiet monochrome symbols */
+.emo-icon { display: inline-flex; vertical-align: -0.15em; color: var(--text-soft); margin: 0 .05em; }
+.emo-icon .ui-icon { width: 1.05em; height: 1.05em; }
+.emo-mono { font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", "Apple Symbols", sans-serif; font-variant-emoji: text; filter: grayscale(1); opacity: .75; }

@@ -90,6 +90,8 @@ const prefs = {
   get theme() { return localStorage.getItem('pond_theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); },
   set theme(v) { localStorage.setItem('pond_theme', v); },
   get look() { return localStorage.getItem('pond_look') || 'plate'; },
+  get emoji() { return localStorage.getItem('pond_emoji') || 'ink'; },
+  set emoji(v) { localStorage.setItem('pond_emoji', v); },
   set look(v) { localStorage.setItem('pond_look', v); },
 };
 
@@ -657,7 +659,63 @@ function renderAssistantBody(bodyEl, text) {
   bodyEl.classList.remove('streaming');
   bodyEl.dataset.rawText = text || '';
   bodyEl.innerHTML = window.renderMarkdown ? window.renderMarkdown(text) : escapeHtml(text);
+  inkEmoji(bodyEl);
 }
+
+// "Ink" emoji (Plate look): common emoji become Pond's thin line icons in the text colour; the rest are drawn
+// as quiet monochrome symbols. Copying a message still copies the real emoji. Agent Hub → Appearance → Emoji.
+const EMOJI_ICON = {
+  '✅': 'check', '✔': 'check', '☑': 'check', '❌': 'close', '✖': 'close', '❎': 'close',
+  '⚠': 'alert', '🚨': 'alert', '❗': 'alert', '‼': 'alert', '❓': 'alert',
+  '📧': 'mail', '✉': 'mail', '📨': 'mail', '📩': 'mail', '📬': 'mail', '📥': 'mail', '📤': 'send',
+  '📅': 'calendar', '📆': 'calendar', '🗓': 'calendar', '⏰': 'clock', '⏱': 'clock', '🕐': 'clock', '⌛': 'clock', '⏳': 'clock',
+  '💡': 'bulb', '🔔': 'bell', '🔗': 'link', '📄': 'file', '📝': 'file', '📃': 'file', '📎': 'file', '📋': 'list', '🗒': 'list',
+  '🌐': 'globe', '⚡': 'zap', '✨': 'sparkles', '🎉': 'sparkles', '👋': 'handwave', '🔄': 'refresh', '🔁': 'refresh',
+  '▶': 'play', '🗑': 'trash', '👀': 'eye', '👁': 'eye', '🛡': 'shield', '🔒': 'shield', '🔐': 'shield', '🔌': 'plug',
+  '📊': 'activity', '📈': 'activity', '📉': 'activity', '☀': 'sun', '🌞': 'sun', '🌙': 'moon', '🚫': 'ban', '⛔': 'ban',
+  '💻': 'terminal', '🖥': 'terminal', '🧠': 'cpu', '🤖': 'cpu', '🚀': 'send', '👉': 'send', '➡': 'send',
+};
+const EMOJI_RE = /\p{Extended_Pictographic}(?:\uFE0F|\u20E3|[\u{1F3FB}-\u{1F3FF}]|\u200D\p{Extended_Pictographic}\uFE0F?)*/gu;
+function inkEmoji(root) {
+  if (document.documentElement.getAttribute('data-look') !== 'plate' || prefs.emoji === 'color' || !root) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => (n.parentElement?.closest('code, pre, .katex, .emo') || !/\p{Extended_Pictographic}/u.test(n.nodeValue) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+  });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    const text = node.nodeValue;
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    for (const m of text.matchAll(EMOJI_RE)) {
+      const ch = m[0];
+      if (/^[©®™]/.test(ch)) continue;
+      if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+      const span = document.createElement('span');
+      const name = EMOJI_ICON[ch.replace(/[\uFE0F\u{1F3FB}-\u{1F3FF}]/gu, '')];
+      span.className = name ? 'emo emo-icon' : 'emo emo-mono';
+      span.dataset.emoji = ch;
+      if (name) { span.innerHTML = icon(name, 15); span.setAttribute('role', 'img'); span.setAttribute('aria-label', ch); }
+      else span.textContent = ch;
+      frag.appendChild(span);
+      last = m.index + ch.length;
+    }
+    if (!last) continue;
+    if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+    node.replaceWith(frag);
+  }
+}
+// copying text keeps the real emoji
+document.addEventListener('copy', (e) => {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.anchorNode?.parentElement?.closest('.msg-body')) return;
+  const box = document.createElement('div');
+  box.appendChild(sel.getRangeAt(0).cloneContents());
+  if (!box.querySelector('.emo-icon')) return;
+  box.querySelectorAll('.emo-icon').forEach((s) => s.replaceWith(s.dataset.emoji || ''));
+  e.clipboardData.setData('text/plain', box.textContent);
+  e.preventDefault();
+});
 
 function addThoughtBlock(bubbleEl, text, { open = false, label = 'Thought' } = {}) {
   const details = document.createElement('details');
@@ -1992,10 +2050,18 @@ async function loadAppearancePanel() {
   if (!el.dataset.lookWired) {
     el.dataset.lookWired = '1';
     el.addEventListener('click', (e) => {
+      const eb = e.target.closest('.emoji-opt');
+      if (eb) {
+        prefs.emoji = eb.dataset.emoji;
+        el.querySelectorAll('.emoji-opt').forEach((x) => x.classList.toggle('primary', x === eb));
+        lastRenderedSessionKey = ''; loadConversation({ force: true }); // redraw answers
+        return;
+      }
       const b = e.target.closest('.look-opt');
       if (!b) return;
       applyLook(b.dataset.look);
       el.querySelectorAll('.look-opt').forEach((x) => x.classList.toggle('primary', x === b));
+      lastRenderedSessionKey = ''; loadConversation({ force: true });
     });
   }
   const settings = await fetch('/api/settings').then((r) => r.json()).catch(() => ({}));
@@ -2011,6 +2077,11 @@ async function loadAppearancePanel() {
     <div class="btn-group look-row" style="margin-bottom:14px">
       <button type="button" class="btn sm look-opt${prefs.look === 'plate' ? ' primary' : ''}" data-look="plate">Plate — serif, quiet</button>
       <button type="button" class="btn sm look-opt${prefs.look === 'classic' ? ' primary' : ''}" data-look="classic">Classic</button>
+    </div>
+    <div class="section-sub">Emoji in answers <span class="card-meta">(Plate look, this device)</span></div>
+    <div class="btn-group" style="margin-bottom:14px">
+      <button type="button" class="btn sm emoji-opt${prefs.emoji !== 'color' ? ' primary' : ''}" data-emoji="ink">Ink — line icons, monochrome</button>
+      <button type="button" class="btn sm emoji-opt${prefs.emoji === 'color' ? ' primary' : ''}" data-emoji="color">Colour</button>
     </div>
     <div class="section-sub">Character</div>
     <div class="appearance-row" style="margin-bottom:14px">
