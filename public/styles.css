@@ -750,7 +750,9 @@ html[data-look="plate"][data-theme="dark"] {
   --ok: #5fd08f; --danger: #e8749f; --danger-bg: rgba(232, 116, 159, .12); --danger-text: #f2a7c2;
   --warn: #e3b85e; --warn-bg: rgba(227, 184, 94, .12);
 }
-html[data-look="plate"] body { font-family: var(--serif); font-variant-numeric: lining-nums tabular-nums; }
+/* Reading text in a clean sans for legibility; the serif is kept for titles and headings only. */
+html[data-look="plate"] body { font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif; font-variant-numeric: lining-nums tabular-nums; }
+html[data-look="plate"] :is(.msg-body h1, .msg-body h2, .msg-body h3, .drawer-header h3, .modal-header h2, .cal-month, .cal-form-title, .cal-day-head, .side-title, .section-sub, .model-menu-head) { font-family: var(--serif); }
 html[data-look="plate"] :is(button, input, textarea, select) { font-family: inherit; }
 html[data-look="plate"] :focus-visible { outline: 1.5px solid var(--text); outline-offset: 2px; }
 
@@ -789,8 +791,8 @@ html[data-look="plate"] .effort-btn { background: none; border-radius: 12px; fon
 html[data-look="plate"] .effort-btn.active { font-style: normal; text-decoration: underline; text-underline-offset: 3px; background: none; }
 
 /* conversation: set like text on a page */
-html[data-look="plate"] .bubble { font-size: .9rem; }
-html[data-look="plate"] .msg-row.assistant .bubble { line-height: 1.58; }
+html[data-look="plate"] .bubble { font-size: .93rem; }
+html[data-look="plate"] .msg-row.assistant .bubble { line-height: 1.6; }
 html[data-look="plate"] .msg-row.user .bubble { border-radius: 6px; line-height: 1.5; }
 html[data-look="plate"] .msg-body a { color: var(--text); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 html[data-look="plate"] .msg-body :is(h1, h2, h3, h4) { font-weight: 400; letter-spacing: .01em; }
