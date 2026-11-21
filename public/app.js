@@ -605,7 +605,7 @@ function addMessage(role, text, { proactive = false, tag = '' } = {}) {
       const mood = proactive ? 'wow' : 'happy';
       const m = uiState.avatarMode === 'image' && uiState.avatarExt
         ? window.PondMascot.createImage(`/appearance/avatar?v=${uiState.avatarVersion || 0}`, mood, { circle: uiState.avatarCircle !== false })
-        : uiState.avatarMode === 'icosa' && window.PondMascot.createIcosa
+        : (uiState.avatarMode === 'icosa' || !uiState.avatarMode) && window.PondMascot.createIcosa
           ? window.PondMascot.createIcosa(mood)
           : window.PondMascot.create(mood, { compact: true });
       avatar.appendChild(m);
@@ -921,7 +921,7 @@ async function refreshState() {
       if (key !== appliedPaletteKey) { appliedPaletteKey = key; window.PondMascot.setPalette(s.ui.mascotPalette, s.ui.mascotColor); }
       const avatarKey = `${s.ui.avatarMode}|${s.ui.avatarVersion}|${s.ui.avatarCircle}`;
       // re-render avatars when the character changes — and on first load if it isn't the default splash (the chat was drawn before settings arrived)
-      if (avatarKey !== appliedAvatarKey && (appliedAvatarKey !== null || (s.ui.avatarMode && s.ui.avatarMode !== 'mascot'))) loadConversation({ force: true });
+      if (avatarKey !== appliedAvatarKey && (appliedAvatarKey !== null || s.ui.avatarMode !== 'mascot')) loadConversation({ force: true });
       appliedAvatarKey = avatarKey;
     }
     modelInputTypes = Array.isArray(s.inputTypes) ? s.inputTypes : ['text'];
@@ -2004,7 +2004,7 @@ async function loadAppearancePanel() {
   const names = Object.keys(window.PondMascot.PALETTES);
   const ui = settings.ui || {};
   const usingImage = ui.avatarMode === 'image' && ui.avatarExt;
-  const usingIcosa = ui.avatarMode === 'icosa';
+  const usingIcosa = ui.avatarMode === 'icosa' || !ui.avatarMode;
   const makeChar = (opts) => (usingIcosa ? window.PondMascot.createIcosa('happy') : window.PondMascot.create('happy', opts));
   el.innerHTML = `
     <div class="section-sub" style="margin-top:0">Look <span class="card-meta">(this device)</span></div>
