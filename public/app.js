@@ -2220,6 +2220,18 @@ async function loadConversation({ force = true, silent = false } = {}) {
         if (m.reasoning) addThoughtBlock(bodyEl.closest('.bubble'), m.reasoning, { open: false, label: 'Thought' });
         renderAssistantBody(bodyEl, m.content || '');
         if (m.pluginFooters) setMessageFooter(bodyEl, m.pluginFooters);
+      } else if (m.role === 'user' && m.toolImage) {
+        // A picture a tool showed the AI (an image file it read, a browser/Blender screenshot): part of the steps.
+        const wrap = document.createElement('div');
+        wrap.className = 'tool-trace tool-image';
+        wrap.innerHTML = `<div class="tool-image-label">${icon('eye', 12)}<span>${escapeHtml(String(m.content || '').replace(/^\[|\]$/g, ''))}</span></div>`;
+        for (const img of m.images || []) {
+          const a = document.createElement('a');
+          a.href = img.url; a.target = '_blank'; a.rel = 'noopener';
+          a.innerHTML = `<img src="${escapeHtml(img.url)}" alt="" loading="lazy">`;
+          wrap.appendChild(a);
+        }
+        messagesEl.appendChild(wrap);
       } else if (m.role === 'user') {
         if (!m.cancelled) history.push({ role: 'user', content: m.content });
         const body = addMessage('user', m.content);

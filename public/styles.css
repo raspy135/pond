@@ -654,6 +654,10 @@ a.artifact-btn { text-decoration: none; }
 .session-item .del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: .85rem; padding: 2px 4px; border-radius: 6px; }
 .session-item .del:hover { color: var(--danger); }
 
+.tool-image { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; }
+.tool-image-label { width: 100%; display: inline-flex; gap: 6px; align-items: center; font-size: .74rem; color: var(--muted); }
+.tool-image img { max-height: 150px; max-width: 240px; border-radius: 8px; border: 1px solid var(--border); display: block; }
+
 /* ---------- Calendar panel ---------- */
 .cal-drawer { width: 460px; }
 .cal-nav { display: flex; align-items: center; gap: 4px; }
