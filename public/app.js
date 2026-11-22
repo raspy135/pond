@@ -2275,14 +2275,131 @@ async function loadSkillsPanel() {
 }
 
 // ---------- Sessions ----------
+// Pinned chats sit at the top in the user's order (drag to reorder; drag a chat above the line to pin it, below to
+// unpin). Every other chat is listed by recent activity. Double-click a title (or the pencil) to rename.
 function sessionsKeyOf(data) {
-  return `${data.activeId || ''}|${(data.sessions || []).map((x) => `${x.id}:${x.updatedAt || ''}:${x.title || ''}`).join(',')}`;
+  return `${data.activeId || ''}|${(data.pinned || []).join(',')}|${(data.sessions || []).map((x) => `${x.id}:${x.updatedAt || ''}:${x.title || ''}`).join(',')}`;
+}
+
+const sessUi = { renamingId: null, dragging: false, pinned: [], suppressClick: 0 };
+
+async function savePins(ids) {
+  sessUi.pinned = ids;
+  try {
+    await fetch('/api/sessions/pins', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) });
+  } catch (err) { console.error('save pins failed', err); }
+  loadSessions({ force: true });
+}
+
+function startRename(row, s) {
+  if (sessUi.renamingId) return;
+  sessUi.renamingId = s.id;
+  const titleBtn = row.querySelector('.title');
+  const input = document.createElement('input');
+  input.className = 'sess-rename';
+  input.value = s.title || '';
+  input.maxLength = 80;
+  input.setAttribute('aria-label', 'Chat name');
+  titleBtn.replaceWith(input);
+  row.classList.add('renaming');
+  input.focus();
+  input.select();
+  let done = false;
+  const finish = async (save) => {
+    if (done) return;
+    done = true;
+    const title = input.value.replace(/\s+/g, ' ').trim();
+    if (save && title && title !== s.title) {
+      try {
+        await fetch(`/api/sessions/${s.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+      } catch (err) { console.error('rename failed', err); }
+    }
+    sessUi.renamingId = null;
+    loadSessions({ force: true });
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+}
+
+function attachSessionDrag(row, list) {
+  row.addEventListener('contextmenu', (e) => { if (e.pointerType === 'touch' || sessUi.dragging) e.preventDefault(); });
+  row.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || sessUi.renamingId || e.target.closest('.sess-act')) return;
+    const touch = e.pointerType !== 'mouse';
+    const startY = e.clientY, startX = e.clientX;
+    let active = false, timer = null, scrollTimer = null, lastY = startY;
+    const begin = () => {
+      active = true;
+      sessUi.dragging = true;
+      list.classList.add('dragging');
+      row.classList.add('drag-row');
+      try { row.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+      if (touch && navigator.vibrate) navigator.vibrate(10);
+      scrollTimer = setInterval(() => {
+        const r = list.getBoundingClientRect();
+        if (lastY < r.top + 24) list.scrollTop -= 6;
+        else if (lastY > r.bottom - 24) list.scrollTop += 6;
+      }, 16);
+    };
+    if (touch) timer = setTimeout(begin, 380);
+    const place = (y) => {
+      const others = [...list.children].filter((el) => el !== row && (el.classList.contains('session-item') || el.classList.contains('sess-sep')));
+      const before = others.find((el) => { const r = el.getBoundingClientRect(); return y < r.top + r.height / 2; });
+      if (before) { if (row.nextElementSibling !== before) list.insertBefore(row, before); }
+      else if (list.lastElementChild !== row) list.appendChild(row);
+    };
+    const move = (ev) => {
+      lastY = ev.clientY;
+      if (!active) {
+        const moved = Math.max(Math.abs(ev.clientY - startY), Math.abs(ev.clientX - startX));
+        if (touch) { if (moved > 8) cleanup(); return; } // finger moved first: it's a scroll
+        if (Math.abs(ev.clientY - startY) < 6) return;
+        begin();
+      }
+      ev.preventDefault();
+      place(ev.clientY);
+    };
+    const up = () => {
+      const wasActive = active;
+      cleanup();
+      if (!wasActive) return;
+      sessUi.suppressClick = Date.now();
+      const ids = [];
+      for (const el of list.children) {
+        if (el.classList.contains('sess-sep')) break;
+        if (el.dataset.id) ids.push(el.dataset.id);
+      }
+      if (ids.join(',') !== sessUi.pinned.join(',')) savePins(ids);
+      else loadSessions({ force: true }); // dropped among recent chats: snap back to recency order
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      clearInterval(scrollTimer);
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      document.removeEventListener('pointercancel', up);
+      if (active) {
+        list.classList.remove('dragging');
+        row.classList.remove('drag-row');
+        sessUi.dragging = false;
+      }
+      active = false;
+    };
+    document.addEventListener('pointermove', move, { passive: false });
+    document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', up);
+  });
 }
 
 async function loadSessions({ force = false } = {}) {
   try {
+    if (sessUi.renamingId || sessUi.dragging) return; // don't rebuild the list under the user's hands
     const resp = await fetch('/api/sessions', { cache: 'no-store' });
     const data = await resp.json();
+    if (sessUi.renamingId || sessUi.dragging) return;
     const dataKey = sessionsKeyOf(data);
     const renderKey = `${dataKey}#${currentSessionId || ''}`;
     if (!force && renderKey === lastSessionsDataKey) return;
@@ -2293,26 +2410,59 @@ async function loadSessions({ force = false } = {}) {
       list.innerHTML = '<div class="empty">No chats yet</div>';
       return;
     }
+    const byId = new Map(sessions.map((s) => [s.id, s]));
+    sessUi.pinned = (data.pinned || []).filter((id) => byId.has(id));
+    const pinnedSet = new Set(sessUi.pinned);
+    const ordered = [...sessUi.pinned.map((id) => byId.get(id)), ...sessions.filter((s) => !pinnedSet.has(s.id))];
+    if (!list.dataset.touchGuard) {
+      list.dataset.touchGuard = '1';
+      // Once a long-press drag has started, stop the list (and page) from scrolling under the finger.
+      list.addEventListener('touchmove', (e) => { if (sessUi.dragging) e.preventDefault(); }, { passive: false });
+    }
     list.innerHTML = '';
-    for (const s of sessions) {
+    list.classList.toggle('has-pins', sessUi.pinned.length > 0);
+    ordered.forEach((s, i) => {
+      const pinned = pinnedSet.has(s.id);
+      if (i === sessUi.pinned.length) {
+        const sep = document.createElement('div');
+        sep.className = 'sess-sep';
+        sep.innerHTML = '<span>Drop above to pin</span>';
+        list.appendChild(sep);
+      }
       const row = document.createElement('div');
-      row.className = 'session-item' + (s.id === currentSessionId ? ' active' : '');
+      row.className = 'session-item' + (s.id === currentSessionId ? ' active' : '') + (pinned ? ' pinned' : '');
+      row.dataset.id = s.id;
       const title = document.createElement('button');
       title.className = 'title';
       title.textContent = s.title || 'New chat';
-      title.title = new Date(s.updatedAt).toLocaleString();
-      title.onclick = () => switchSession(s.id);
-      const del = document.createElement('button');
-      del.className = 'del';
-      del.innerHTML = icon('close', 13);
-      del.title = 'Delete chat';
-      del.onclick = async (e) => {
-        e.stopPropagation();
-        await fetch(`/api/sessions/${s.id}`, { method: 'DELETE' });
+      title.title = `${new Date(s.updatedAt).toLocaleString()} · double-click to rename`;
+      title.onclick = () => { if (Date.now() - sessUi.suppressClick > 300) switchSession(s.id); };
+      title.ondblclick = (e) => { e.preventDefault(); startRename(row, s); };
+      const act = (name, label, cls, fn) => {
+        const b = document.createElement('button');
+        b.className = `sess-act ${cls}`;
+        b.innerHTML = icon(name, 13);
+        b.title = label;
+        b.setAttribute('aria-label', label);
+        b.onclick = (e) => { e.stopPropagation(); fn(); };
+        return b;
       };
-      row.appendChild(title);
-      row.appendChild(del);
+      const pinBtn = act('pin', pinned ? 'Unpin' : 'Pin to top', 'pin' + (pinned ? ' on' : ''), () => {
+        savePins(pinned ? sessUi.pinned.filter((id) => id !== s.id) : [...sessUi.pinned, s.id]);
+      });
+      const renBtn = act('pencil', 'Rename', 'ren', () => startRename(row, s));
+      const del = act('close', 'Delete chat', 'del', async () => {
+        await fetch(`/api/sessions/${s.id}`, { method: 'DELETE' });
+      });
+      row.append(title, pinBtn, renBtn, del);
+      attachSessionDrag(row, list);
       list.appendChild(row);
+    });
+    if (sessUi.pinned.length === ordered.length) {
+      const sep = document.createElement('div');
+      sep.className = 'sess-sep';
+      sep.innerHTML = '<span>Drop above to pin</span>';
+      list.appendChild(sep);
     }
   } catch (err) {
     console.error('loadSessions failed', err);

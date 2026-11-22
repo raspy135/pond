@@ -5,6 +5,8 @@
     plus: '<path d="M12 5v14M5 12h14"/>',
     branch: '<path d="M6 3v10a5 5 0 0 0 5 5h7"/><path d="m15 15 3 3-3 3"/><circle cx="6" cy="3.5" r="0.5"/>',
     close: '<path d="M18 6 6 18M6 6l12 12"/>',
+    pin: '<path d="M9 4h6l-1 6 3 3v1H7v-1l3-3-1-6Z"/><path d="M12 14v6"/>',
+    pencil: '<path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/>',
     check: '<path d="M20 6 9 17l-5-5"/>',
     'check-circle': '<circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/>',
     ban: '<circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/>',

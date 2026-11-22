@@ -652,8 +652,23 @@ a.artifact-btn { text-decoration: none; }
 .session-item:hover { background: var(--panel-2); }
 .session-item.active { background: var(--panel-2); border-color: var(--accent); color: var(--text); }
 .session-item .title { flex: 1; background: none; border: none; color: inherit; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: inherit; }
-.session-item .del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: .85rem; padding: 2px 4px; border-radius: 6px; }
+.session-item { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+.session-item .sess-act { display: none; background: none; border: none; color: var(--muted); cursor: pointer; padding: 2px 3px; border-radius: 6px; line-height: 0; flex: none; }
+.session-item:hover .sess-act, .session-item.active .sess-act, .session-item .sess-act.pin.on { display: inline-flex; }
+.session-item .sess-act:hover { color: var(--text); }
 .session-item .del:hover { color: var(--danger); }
+.session-item .pin.on { color: var(--text-soft); }
+.session-item .pin.on svg { fill: currentColor; }
+@media (hover: none) { .session-item:not(.active) .sess-act:not(.pin.on) { display: none; } }
+.sess-rename { flex: 1; min-width: 0; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--accent); border-radius: 4px; padding: 1px 4px; outline: none; }
+.sess-sep { display: none; height: 0; border-top: 1px solid var(--border); margin: 3px 4px; position: relative; }
+.session-list.has-pins .sess-sep { display: block; }
+.session-list.dragging .sess-sep { display: block; border-top-style: dashed; height: 14px; }
+.sess-sep span { display: none; position: absolute; left: 50%; top: 0; transform: translate(-50%, -50%); background: var(--panel); padding: 0 6px; font-size: .64rem; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.session-list.dragging .sess-sep span { display: block; }
+.session-list.dragging { cursor: grabbing; }
+.session-item.drag-row { background: var(--panel-2); box-shadow: 0 2px 10px rgba(0,0,0,.18); opacity: .95; position: relative; z-index: 2; }
+.session-list.dragging .session-item:not(.drag-row) { pointer-events: none; }
 
 .tool-image { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; }
 .tool-image-label { width: 100%; display: inline-flex; gap: 6px; align-items: center; font-size: .74rem; color: var(--muted); }
@@ -831,3 +846,4 @@ html[data-look="plate"] .look-row .look-opt { font-style: italic; }
 .emo-icon { display: inline-flex; vertical-align: -0.15em; color: var(--text-soft); margin: 0 .05em; }
 .emo-icon .ui-icon { width: 1.05em; height: 1.05em; }
 .emo-mono { font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", "Apple Symbols", sans-serif; font-variant-emoji: text; filter: grayscale(1); opacity: .75; }
+html[data-look="plate"] .sess-sep span { background: var(--bg); }

@@ -19,6 +19,8 @@ import { markTurnCancelled,
   appendToActiveSession,
   appendToSession,
   touchSessionMeta,
+  renameSession,
+  setPinnedSessions,
   migrateLegacyConversation,
   sessionFile,
   onActivity,
@@ -860,7 +862,7 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, {
         rev: getSyncRev(),
         conversationKey: `${session.id || ''}|${session.updatedAt || ''}|${(session.messages || []).length}`,
-        sessionsKey: `${idx.activeId || ''}|${(idx.sessions || []).map((x) => `${x.id}:${x.updatedAt || ''}:${x.title || ''}`).join(',')}`,
+        sessionsKey: `${idx.activeId || ''}|${(idx.pinned || []).join(',')}|${(idx.sessions || []).map((x) => `${x.id}:${x.updatedAt || ''}:${x.title || ''}`).join(',')}`,
       });
     }
 
@@ -926,12 +928,29 @@ const server = http.createServer(async (req, res) => {
       broadcast({ type: 'session_switched', sessionId: target.id });
       return sendJson(res, 200, { ok: true, activeId: target.id });
     }
+    if (req.method === 'POST' && pathname === '/api/sessions/pins') {
+      const body = await readJsonBody(req).catch(() => ({}));
+      if (!Array.isArray(body?.ids)) return sendJson(res, 400, { error: 'ids must be an array' });
+      const pinned = await setPinnedSessions(body.ids.slice(0, 200));
+      broadcast({ type: 'sessions' });
+      return sendJson(res, 200, { ok: true, pinned });
+    }
     const sessionMatch = pathname.match(/^\/api\/sessions\/([A-Za-z0-9_-]+)$/);
+    if (req.method === 'PATCH' && sessionMatch) {
+      const body = await readJsonBody(req).catch(() => ({}));
+      const title = String(body?.title ?? '').replace(/\s+/g, ' ').trim().slice(0, 80);
+      if (!title) return sendJson(res, 400, { error: 'title is required' });
+      const s = await renameSession(sessionMatch[1], title);
+      if (!s) return sendJson(res, 404, { error: 'Session not found' });
+      broadcast({ type: 'sessions' });
+      return sendJson(res, 200, { ok: true, title });
+    }
     if (req.method === 'DELETE' && sessionMatch) {
       const id = sessionMatch[1];
       const idx = await loadSessionsIndex();
       if (!idx.sessions.find((x) => x.id === id)) return sendJson(res, 404, { error: 'Session not found' });
       idx.sessions = idx.sessions.filter((x) => x.id !== id);
+      if (Array.isArray(idx.pinned)) idx.pinned = idx.pinned.filter((x) => x !== id);
       try { await rm(sessionFile(id), { force: true }); } catch { /* ignore */ }
       if (idx.activeId === id) {
         if (idx.sessions.length) {
