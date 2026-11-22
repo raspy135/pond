@@ -58,6 +58,9 @@ let busy = false;
 let assistantName = 'Pond';
 let currentSessionId = null;
 let lastRenderedSessionKey = '';
+// What the chat on screen was drawn from: `count` saved messages of `sessionId`, plus (liveTail) a reply that was
+// streamed in live after them. When that reply is saved, the saved copy is adopted without redrawing the chat.
+let renderedConv = { sessionId: null, count: 0, liveTail: false, expectUser: false, liveBody: null, finishedAt: 0 };
 let activeRequestId = null;
 // Cross-device sync state
 let eventSource = null;          // current EventSource
@@ -907,6 +910,7 @@ async function attachToTurn(turn) {
   detachTurnView();
   const t = { requestId: turn.requestId, sessionId: currentSessionId, abort: new AbortController(), detached: false, stopRequested: false };
   t.view = createTurnView({ startedAt: turn.startedAt || Date.now() });
+  Object.assign(renderedConv, { liveTail: true, expectUser: false, liveBody: t.view.bubbleBody, finishedAt: 0 });
   bubbleByRequest.set(t.requestId, t.view.bubbleBody);
   takeTurn(t);
   let notice = '';
@@ -918,9 +922,10 @@ async function attachToTurn(turn) {
   } finally {
     if (!t.detached) {
       t.view.finish({ stopped: t.stopRequested, notice });
+      renderedConv.finishedAt = Date.now();
       releaseTurn(t);
-      lastRenderedSessionKey = '';
-      setTimeout(() => loadConversation({ force: false, silent: true }).then(() => loadSessions()), 250); // saved version (tool traces, footers)
+      if (t.stopRequested) { lastRenderedSessionKey = ''; renderedConv.liveTail = false; }
+      setTimeout(() => loadConversation({ force: false, silent: true }).then(() => loadSessions()), 600); // adopt the saved copy (footers)
     }
   }
 }
@@ -943,6 +948,7 @@ async function sendMessage(text) {
   const requestId = crypto.randomUUID ? crypto.randomUUID() : `r-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   const t = { requestId, sessionId: currentSessionId, abort: new AbortController(), detached: false, stopRequested: false, own: true };
   t.view = createTurnView();
+  Object.assign(renderedConv, { liveTail: true, expectUser: true, liveBody: t.view.bubbleBody, finishedAt: 0 });
   bubbleByRequest.set(requestId, t.view.bubbleBody);
   if (bubbleByRequest.size > 50) bubbleByRequest.delete(bubbleByRequest.keys().next().value);
   takeTurn(t);
@@ -962,7 +968,7 @@ async function sendMessage(text) {
       return;
     }
     await readSse(resp, (p) => t.view.handle(p));
-    if (t.view.acc) { history.push({ role: 'assistant', content: t.view.acc }); lastRenderedSessionKey = ''; }
+    if (t.view.acc) history.push({ role: 'assistant', content: t.view.acc });
   } catch (err) {
     if (t.detached) {
       // Left this chat (or re-rendered it): nothing to show here — the server finishes and saves the reply.
@@ -979,10 +985,11 @@ async function sendMessage(text) {
       scheduleSyncRecovery();
     }
   } finally {
-    if (!t.detached) t.view.finish({ stopped: t.stopRequested, notice });
+    if (!t.detached) { t.view.finish({ stopped: t.stopRequested, notice }); renderedConv.finishedAt = Date.now(); }
     releaseTurn(t);
     refreshState();
-    if (t.stopRequested && !t.detached) { lastRenderedSessionKey = ''; setTimeout(() => loadConversation({ force: false, silent: true }), 400); } // show it as stopped
+    if (t.stopRequested && !t.detached) { lastRenderedSessionKey = ''; renderedConv.liveTail = false; setTimeout(() => loadConversation({ force: false, silent: true }), 400); } // show it as stopped
+    else if (!t.detached && !notice) setTimeout(() => loadConversation({ force: false, silent: true }), 600); // adopt the saved copy (footers)
   }
 }
 
@@ -2626,6 +2633,34 @@ async function loadSessions({ force = false } = {}) {
   }
 }
 
+// A reply that was shown live has been saved: take the saved copy (history, footers) without redrawing the chat —
+// a redraw re-lays out steps and thinking, reloads embeds and jumps the scroll. Returns null when a redraw is needed.
+function adoptSavedTurn(data, key) {
+  const rc = renderedConv;
+  if (!rc.liveTail || attachedTurn || data.activeTurn) return null;
+  if (!data.sessionId || data.sessionId !== rc.sessionId || data.sessionId !== currentSessionId) return null;
+  const msgs = data.messages || [];
+  const tail = msgs.slice(rc.count);
+  const turnPart = rc.expectUser ? tail.slice(1) : tail;
+  if (rc.expectUser && tail.length && !(tail[0].role === 'user' && !tail[0].toolImage)) return null;
+  const onlyTurn = turnPart.every((m) => !m.proactive && !m.cancelled && (m.role === 'assistant' || m.role === 'tool' || (m.role === 'user' && m.toolImage)));
+  if (!onlyTurn) return null; // something else arrived meanwhile (a check-in, another device): redraw
+  const finalMsg = [...turnPart].reverse().find((m) => m.role === 'assistant' && String(m.content || '').trim());
+  if (!finalMsg) {
+    // not saved yet: look again on the next sync; if it never shows up (an error), redraw after a while
+    return rc.finishedAt && Date.now() - rc.finishedAt > 8000 ? null : false;
+  }
+  if (finalMsg.pluginFooters && rc.liveBody?.isConnected) setMessageFooter(rc.liveBody, finalMsg.pluginFooters);
+  history = [];
+  for (const m of msgs) {
+    if (m.role === 'user' && !m.toolImage && !m.cancelled) history.push({ role: 'user', content: m.content });
+    else if (m.role === 'assistant' && String(m.content || '').trim()) history.push({ role: 'assistant', content: m.content });
+  }
+  renderedConv = { sessionId: data.sessionId, count: msgs.length, liveTail: false, expectUser: false, liveBody: null, finishedAt: 0 };
+  lastRenderedSessionKey = key;
+  return false;
+}
+
 async function loadConversation({ force = true, silent = false } = {}) {
   try {
     const resp = await fetch('/api/conversation', { cache: 'no-store' });
@@ -2633,6 +2668,10 @@ async function loadConversation({ force = true, silent = false } = {}) {
     const data = await resp.json();
     const key = `${data.sessionId || ''}|${data.updatedAt || ''}|${(data.messages || []).length}`;
     if (!force && key === lastRenderedSessionKey) return false;
+    if (!force) {
+      const soft = adoptSavedTurn(data, key);
+      if (soft !== null) return soft;
+    }
 
     const wasNearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 120;
     detachTurnView(); // the DOM is rebuilt below; a running turn is re-attached from the server afterwards
@@ -2682,6 +2721,7 @@ async function loadConversation({ force = true, silent = false } = {}) {
         if (m.cancelled) markStopped(body);
       }
     }
+    renderedConv = { sessionId: data.sessionId || null, count: (data.messages || []).length, liveTail: false, expectUser: false, liveBody: null, finishedAt: 0 };
     if (!(data.messages || []).length && !data.activeTurn) showGreeting();
     if (force || wasNearBottom) scrollToLatest(true); else updateJumpBtn();
     if (data.activeTurn) attachToTurn(data.activeTurn); // reply still running (switched back / reopened / other device)
@@ -2804,6 +2844,8 @@ function connectEvents() {
     if (payload.type === 'message') {
       if (payload.sessionId && payload.sessionId !== currentSessionId) { loadSessions(); return; }
       if (payload.clientId && payload.clientId === clientId) { loadSessions(); return; }
+      // a reply this tab is showing live (attached from another device): already on screen
+      if (payload.role === 'assistant' && (attachedTurn || renderedConv.liveTail)) { loadSessions(); return; }
       history.push({ role: payload.role, content: payload.content });
       if (payload.role === 'assistant') {
         const bodyEl = addMessage('assistant', '');
