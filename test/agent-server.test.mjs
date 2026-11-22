@@ -169,7 +169,7 @@ const mockLlm = http.createServer((req, res) => {
             index: 0,
             id: 'call_calc_1',
             type: 'function',
-            function: { name: 'calculate', arguments: JSON.stringify({ expression: '6 * 7' }) },
+            function: { name: 'list_tasks', arguments: JSON.stringify({}) },
           },
         ],
       });

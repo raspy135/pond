@@ -25,7 +25,7 @@ const server = http.createServer((req, res) => {
         chunk({ tool_calls: [{ index: 0, id: 'call_2', type: 'function', function: { name: 'remember', arguments: JSON.stringify({ fact: 'User prefers concise answers' }) } }] });
         chunk({}, 'tool_calls');
       } else if (!hasToolResult && /calc|math/i.test(lastUser)) {
-        chunk({ tool_calls: [{ index: 0, id: 'call_3', type: 'function', function: { name: 'calculate', arguments: JSON.stringify({ expression: '(12 * 4) / 3' }) } }] });
+        chunk({ tool_calls: [{ index: 0, id: 'call_3', type: 'function', function: { name: 'list_tasks', arguments: JSON.stringify({}) } }] });
         chunk({}, 'tool_calls');
       } else {
         const text = hasToolResult

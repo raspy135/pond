@@ -847,3 +847,39 @@ html[data-look="plate"] .look-row .look-opt { font-style: italic; }
 .emo-icon .ui-icon { width: 1.05em; height: 1.05em; }
 .emo-mono { font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", "Apple Symbols", sans-serif; font-variant-emoji: text; filter: grayscale(1); opacity: .75; }
 html[data-look="plate"] .sess-sep span { background: var(--bg); }
+
+/* ---------- memory: docs + dream ---------- */
+.mem-doc-list { display: flex; flex-direction: column; gap: 1px; margin-top: 6px; }
+.mem-doc-row { display: flex; align-items: center; gap: 7px; width: 100%; background: none; border: 0; color: var(--text-soft); font: inherit; font-size: .78rem; text-align: left; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
+.mem-doc-row span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mem-doc-row svg { flex: none; color: var(--muted); }
+.mem-doc-row:hover { background: var(--panel-2); color: var(--text); }
+.dream-line { display: flex; align-items: center; gap: 6px; margin-top: 8px; background: none; border: 0; padding: 2px 6px; color: var(--muted); font: inherit; font-size: .72rem; cursor: pointer; text-align: left; }
+.dream-line:hover { color: var(--text); }
+.dream-line.running svg { animation: dream-pulse 1.6s ease-in-out infinite; }
+@keyframes dream-pulse { 50% { opacity: .3; } }
+.mem-drawer { width: 460px; }
+.dream-status { color: var(--text-soft); }
+.toggle-row select { font: inherit; font-size: .78rem; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 2px 4px; }
+.mem-section { font-size: .68rem; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin-top: 8px; }
+.mem-core li { font-size: .82rem; }
+.memdoc-link { color: inherit; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; cursor: pointer; }
+.mem-doc-card { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--border); padding: 8px 4px; font: inherit; color: var(--text); cursor: pointer; }
+.mem-doc-card:hover { background: var(--panel-2); }
+.mem-doc-title { display: flex; align-items: baseline; gap: 8px; font-weight: 600; font-size: .86rem; }
+.mem-doc-desc { color: var(--text-soft); font-size: .78rem; margin-top: 2px; }
+.mem-new { font-style: normal; font-weight: 600; font-size: .62rem; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; }
+.mem-doc-nav { display: flex; justify-content: space-between; }
+.link-btn.danger:hover { color: var(--danger); }
+.mem-doc-view h2 { font-size: 1.1rem; font-weight: 650; margin: 6px 0 2px; }
+.mem-doc-view > .mem-doc-desc { margin: 0 0 10px; }
+.mem-doc-md { font-size: .88rem; }
+.mem-doc-file { margin-top: 14px; font-family: ui-monospace, Consolas, monospace; font-size: .68rem; color: var(--muted); }
+.dream-card { border: 1px solid var(--border); border-radius: 6px; padding: 9px 11px; display: flex; flex-direction: column; gap: 4px; }
+.dream-card.failed { border-color: var(--danger); }
+.dream-card-head { display: flex; align-items: center; gap: 6px; font-size: .68rem; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.dream-card-text { font-size: .84rem; }
+.dream-card-stats { font-size: .72rem; color: var(--muted); }
+@media (max-width: 760px) { .mem-drawer { width: 100vw; max-width: 100vw; } }
+.mem-doc-md ul, .mem-doc-md ol { padding-left: 1.3em; margin: 4px 0; }
+.mem-doc-md p { margin: 6px 0; }

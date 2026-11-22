@@ -1190,7 +1190,7 @@ async function refreshState() {
         const id = typeof m === 'string' ? null : m.id;
         const li = document.createElement('li');
         const span = document.createElement('span');
-        span.textContent = fact;
+        span.innerHTML = memLinkify(escapeHtml(fact));
         li.appendChild(span);
         if (id) {
           const del = document.createElement('button');
@@ -1205,6 +1205,7 @@ async function refreshState() {
         memList.appendChild(li);
       }
     }
+    renderMemorySide(s.memoryDocs || [], s.dream || null);
   } catch (err) {
     console.error('state refresh failed', err);
   }
@@ -1256,6 +1257,7 @@ function closeAllDrawers() {
   $('#notifDrawer').hidden = true;
   $('#emailDrawer').hidden = true;
   $('#calDrawer').hidden = true;
+  $('#memDrawer').hidden = true;
 }
 
 function openDrawer(id) {
@@ -1264,7 +1266,163 @@ function openDrawer(id) {
   if (id === 'notifDrawer') loadNotificationsDrawer();
   if (id === 'emailDrawer') loadEmailDrawer();
   if (id === 'calDrawer') openCalendar();
+  if (id === 'memDrawer') loadMemoryDrawer();
 }
+
+// ---------- Memory: core facts, topic docs, nightly dream ----------
+const memUi = { doc: null, data: null };
+const memLinkify = (html) => html.replace(/\[\[([^\]<>\n]{1,80})\]\]/g, (_, n) => `<a href="#" class="memdoc-link" data-memdoc="${n.trim()}">${n.trim()}</a>`);
+const hourLabel = (h) => new Date(2000, 0, 1, h).toLocaleTimeString([], { hour: 'numeric' });
+function dreamWhen(iso) {
+  const d = new Date(iso);
+  const today = new Date();
+  const yest = new Date(today.getTime() - 86_400_000);
+  const t = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (d.toDateString() === today.toDateString()) return `today ${t}`;
+  if (d.toDateString() === yest.toDateString()) return `last night ${t}`;
+  return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${t}`;
+}
+function dreamStatusText(dream) {
+  if (!dream) return '';
+  if (dream.running) return 'Dreaming… reorganizing memory';
+  const last = dream.lastRun;
+  const next = dream.enabled ? `next at ${hourLabel(dream.hour)}` : 'nightly dream off';
+  if (!last) return `Hasn't dreamed yet · ${next}`;
+  if (!last.ok) return `Last dream failed (${dreamWhen(last.at)}) · ${next}`;
+  if (last.undone) return `Last dream undone · ${next}`;
+  return `Dreamed ${dreamWhen(last.at)} · ${next}`;
+}
+function renderMemorySide(docs, dream) {
+  const list = $('#memoryDocList');
+  if (list) {
+    list.innerHTML = '';
+    for (const d of docs) {
+      const b = document.createElement('button');
+      b.className = 'mem-doc-row';
+      b.title = d.description || d.title;
+      b.innerHTML = `${icon('file', 12)}<span></span>`;
+      b.querySelector('span').textContent = d.title || d.name;
+      b.onclick = () => { document.body.classList.remove('sidebar-open'); memUi.doc = d.name; openDrawer('memDrawer'); };
+      list.appendChild(b);
+    }
+  }
+  const line = $('#dreamLine');
+  if (line) {
+    line.hidden = !dream;
+    line.innerHTML = `${icon('moon', 12)}<span></span>`;
+    line.querySelector('span').textContent = dreamStatusText(dream);
+    line.classList.toggle('running', Boolean(dream?.running));
+  }
+  if (!$('#memDrawer').hidden && memUi.data && dream) { memUi.data.dream = dream; renderMemoryControls(); }
+}
+function renderMemoryControls() {
+  const dream = memUi.data?.dream;
+  if (!dream) return;
+  $('#dreamStatus').innerHTML = `${icon('moon', 14)}<span></span>`;
+  $('#dreamStatus').querySelector('span').textContent = dreamStatusText(dream);
+  $('#dreamNowBtn').disabled = dream.running;
+  $('#dreamNowBtn').textContent = dream.running ? 'Dreaming…' : 'Dream now';
+  $('#dreamUndoBtn').hidden = !dream.canUndo || dream.running;
+  $('#dreamToggle').checked = dream.enabled;
+  const sel = $('#dreamHour');
+  if (!sel.options.length) for (let h = 0; h < 24; h++) sel.add(new Option(hourLabel(h), String(h)));
+  sel.value = String(dream.hour);
+  sel.disabled = !dream.enabled;
+}
+async function loadMemoryDrawer() {
+  try {
+    memUi.data = await fetch('/api/memory', { cache: 'no-store' }).then((r) => r.json());
+  } catch { memUi.data = { core: [], docs: [], dream: null }; }
+  renderMemoryControls();
+  if (memUi.doc) return showMemoryDoc(memUi.doc);
+  renderMemoryOverview();
+}
+function renderMemoryOverview() {
+  memUi.doc = null;
+  const { core = [], docs = [], dream } = memUi.data || {};
+  const body = $('#memBody');
+  body.innerHTML = '';
+  const last = dream?.lastRun;
+  if (last?.summary) {
+    const card = document.createElement('div');
+    card.className = 'dream-card' + (last.ok ? '' : ' failed');
+    const st = last.stats || {};
+    const bits = last.ok && !last.skipped ? [st.chats != null && `${st.chats} chats read`, st.facts != null && `${st.facts} new facts`, st.coreBefore != null && `core ${st.coreBefore} → ${st.coreAfter}`, st.docsWritten && `${st.docsWritten} docs updated`].filter(Boolean) : [];
+    card.innerHTML = `<div class="dream-card-head">${icon('moon', 13)}<span></span></div><div class="dream-card-text"></div>${bits.length ? '<div class="dream-card-stats"></div>' : ''}`;
+    card.querySelector('.dream-card-head span').textContent = `${last.reason === 'manual' ? 'Dream' : 'Nightly dream'} · ${dreamWhen(last.at)}${last.undone ? ' · undone' : ''}`;
+    card.querySelector('.dream-card-text').textContent = last.summary;
+    if (bits.length) card.querySelector('.dream-card-stats').textContent = bits.join(' · ');
+    body.appendChild(card);
+  }
+  const h1 = document.createElement('div');
+  h1.className = 'mem-section';
+  h1.textContent = `Core · in every chat (${core.length})`;
+  body.appendChild(h1);
+  if (!core.length) body.insertAdjacentHTML('beforeend', '<div class="empty">Nothing yet — tell Pond about yourself, or it will pick things up from your chats tonight.</div>');
+  const ul = document.createElement('ul');
+  ul.className = 'memory-list mem-core';
+  for (const m of core) {
+    const li = document.createElement('li');
+    li.innerHTML = `<span>${memLinkify(escapeHtml(m.fact))}</span>`;
+    const del = document.createElement('button');
+    del.innerHTML = icon('close', 13);
+    del.title = 'Forget';
+    del.onclick = async () => { await fetch(`/api/memory/${m.id}`, { method: 'DELETE' }); loadMemoryDrawer(); refreshState(); };
+    li.appendChild(del);
+    ul.appendChild(li);
+  }
+  body.appendChild(ul);
+  const h2 = document.createElement('div');
+  h2.className = 'mem-section';
+  h2.textContent = `Docs · opened when needed (${docs.length})`;
+  body.appendChild(h2);
+  if (!docs.length) body.insertAdjacentHTML('beforeend', '<div class="empty">No docs yet. The nightly dream moves details out of the core into topic docs.</div>');
+  const changed = new Set(dream?.lastRun?.ok && !dream.lastRun.undone ? dream.lastRun.changed || [] : []);
+  for (const d of docs) {
+    const row = document.createElement('button');
+    row.className = 'mem-doc-card';
+    row.innerHTML = '<div class="mem-doc-title"><span></span></div><div class="mem-doc-desc"></div>';
+    row.querySelector('.mem-doc-title span').textContent = d.title || d.name;
+    if (changed.has(d.name)) row.querySelector('.mem-doc-title').insertAdjacentHTML('beforeend', '<em class="mem-new">updated</em>');
+    row.querySelector('.mem-doc-desc').textContent = d.description || '';
+    row.onclick = () => showMemoryDoc(d.name);
+    body.appendChild(row);
+  }
+}
+async function showMemoryDoc(name) {
+  const body = $('#memBody');
+  let doc;
+  try {
+    const r = await fetch(`/api/memory/docs/${encodeURIComponent(name)}`, { cache: 'no-store' });
+    doc = r.ok ? await r.json() : null;
+  } catch { doc = null; }
+  if (!doc) { memUi.doc = null; renderMemoryOverview(); showToast(`No memory doc "${name}"`); return; }
+  memUi.doc = doc.name;
+  body.innerHTML = `<div class="mem-doc-nav"><button class="link-btn" id="memBack">‹ All memory</button><button class="link-btn danger" id="memDocDel">Delete doc</button></div>
+    <div class="mem-doc-view"><h2></h2><p class="mem-doc-desc"></p><div class="bubble-body mem-doc-md"></div><div class="mem-doc-file"></div></div>`;
+  body.querySelector('h2').textContent = doc.title;
+  body.querySelector('.mem-doc-view > .mem-doc-desc').textContent = doc.description || '';
+  const md = window.renderMarkdown ? window.renderMarkdown(doc.content || '') : escapeHtml(doc.content || '');
+  body.querySelector('.mem-doc-md').innerHTML = memLinkify(md);
+  inkEmoji?.(body.querySelector('.mem-doc-md'));
+  body.querySelector('.mem-doc-file').textContent = `data/memory/${doc.name}.md`;
+  $('#memBack').onclick = () => renderMemoryOverview();
+  $('#memDocDel').onclick = async () => {
+    if (!confirm(`Delete the memory doc "${doc.title}"? Pond will no longer know what's in it.`)) return;
+    await fetch(`/api/memory/docs/${encodeURIComponent(doc.name)}`, { method: 'DELETE' });
+    memUi.doc = null;
+    loadMemoryDrawer();
+    refreshState();
+  };
+  body.scrollTop = 0;
+}
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a.memdoc-link');
+  if (!a) return;
+  e.preventDefault();
+  memUi.doc = a.dataset.memdoc;
+  if ($('#memDrawer').hidden) { document.body.classList.remove('sidebar-open'); openDrawer('memDrawer'); } else showMemoryDoc(memUi.doc);
+});
 
 // ---------- Calendar panel ----------
 // Month view + the selected day + what's coming up. Pond's own events can be added/edited here; events from the
@@ -1714,9 +1872,9 @@ async function loadFileRoot() {
   if (!s.fsRoot) return;
   $('#setFsRoot').value = s.fsRoot;
   $('#fsRootResult').textContent = '';
-  const pol = (name) => (s.sentinel?.policies?.[name]) || (name === 'delete_file' ? 'ask' : 'allow');
+  const pol = (name) => (s.sentinel?.policies?.[name]) || (name === 'run_python' ? 'ask' : 'allow');
   const how = (v) => (v === 'allow' ? 'without asking' : v === 'deny' ? 'never' : 'after asking you');
-  $('#fsRootHint').textContent = `In this folder and below, the AI writes files ${how(pol('write_file'))} and deletes ${how(pol('delete_file'))}. Pond Share: ${s.shareDir}`;
+  $('#fsRootHint').textContent = `In this folder and below, the AI writes and edits files ${how(pol('write_file'))}; anything else (listing, moving, deleting) goes through Python, which runs ${how(pol('run_python'))}. Pond Share: ${s.shareDir}`;
 }
 $('#saveFsRootBtn').addEventListener('click', async () => {
   const out = $('#fsRootResult');
@@ -1915,8 +2073,7 @@ async function loadHubData() {
   polGrid.innerHTML = '';
   const policyLabels = {
     send_email: ['mail', 'Send Email'],
-    run_python: ['terminal', 'Run Python'],
-    delete_file: ['trash', 'Delete File'],
+    run_python: ['terminal', 'Run Python (also file listing & deleting)'],
     write_file: ['file', 'Write & Edit Files'],
     http_request_write: ['globe', 'External API Write'],
     mcp_tool: ['plug', 'External MCP Tool'],
@@ -2770,6 +2927,14 @@ function connectEvents() {
       return;
     }
 
+    if (payload.type === 'memory_updated') {
+      refreshState();
+      if (!$('#memDrawer').hidden) {
+        if (payload.running && memUi.data?.dream) { memUi.data.dream.running = true; renderMemoryControls(); }
+        else loadMemoryDrawer();
+      }
+      return;
+    }
     if (payload.type === 'calendar_updated') {
       if (!$('#calDrawer').hidden && $('#calForm').hidden) loadCalendar();
       refreshState();
@@ -3617,6 +3782,28 @@ $('#compactBtn').addEventListener('click', async () => {
   refreshState();
 });
 
+$('#openMemoryLink').addEventListener('click', () => { document.body.classList.remove('sidebar-open'); memUi.doc = null; openDrawer('memDrawer'); });
+$('#dreamLine').addEventListener('click', () => { document.body.classList.remove('sidebar-open'); memUi.doc = null; openDrawer('memDrawer'); });
+$('#dreamNowBtn').addEventListener('click', async () => {
+  $('#dreamNowBtn').disabled = true;
+  $('#dreamNowBtn').textContent = 'Dreaming…';
+  await fetch('/api/memory/dream', { method: 'POST' }).catch(() => {});
+  showToast('Dreaming — reading recent chats and reorganizing memory. This can take a few minutes.');
+});
+$('#dreamUndoBtn').addEventListener('click', async () => {
+  if (!confirm('Undo the last dream? Memory goes back to how it was before it (anything Pond remembered since is kept).')) return;
+  const r = await fetch('/api/memory/dream/undo', { method: 'POST' }).then((x) => x.json()).catch(() => ({ error: 'network error' }));
+  if (r.error) showToast(`Couldn't undo: ${r.error}`); else showToast('Last dream undone');
+  loadMemoryDrawer();
+  refreshState();
+});
+async function saveDreamSettings() {
+  await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ memory: { dream: $('#dreamToggle').checked, dreamHour: Number($('#dreamHour').value) } }) });
+  loadMemoryDrawer();
+  refreshState();
+}
+$('#dreamToggle').addEventListener('change', saveDreamSettings);
+$('#dreamHour').addEventListener('change', saveDreamSettings);
 $('#clearMemory').addEventListener('click', async () => {
   await fetch('/api/memory', { method: 'DELETE' });
   refreshState();

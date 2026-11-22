@@ -59,8 +59,10 @@
       </div>
 
       <div class="side-section">
-        <div class="side-title">Memory <button id="clearMemory" class="link-btn" title="Clear long-term memory">clear</button></div>
+        <div class="side-title">Memory <span class="side-links"><button id="openMemoryLink" class="link-btn" title="Core facts, topic docs and the nightly dream">open</button><button id="clearMemory" class="link-btn" title="Clear the core memory list (docs stay)">clear</button></span></div>
         <ul id="memoryList" class="memory-list"></ul>
+        <div id="memoryDocList" class="mem-doc-list"></div>
+        <button id="dreamLine" class="dream-line" hidden></button>
       </div>
 
       <div class="side-footer">
@@ -214,6 +216,28 @@
       <div id="calUpcoming" class="cal-day"></div>
       <div id="calFoot" class="cal-foot"></div>
     </div>
+  </div>
+
+  <!-- Memory Drawer -->
+  <div id="memDrawer" class="drawer mem-drawer" hidden>
+    <div class="drawer-header">
+      <h3 class="inline-icon-text"><span data-icon="bulb" data-size="16"></span><span>Memory</span></h3>
+      <button class="close-btn" data-close="memDrawer" aria-label="Close"><span data-icon="close" data-size="17"></span></button>
+    </div>
+    <div class="drawer-controls">
+      <div class="perm-row">
+        <span id="dreamStatus" class="inline-icon-text dream-status"></span>
+        <div class="btn-group">
+          <button id="dreamUndoBtn" class="btn ghost sm" title="Put memory back the way it was before the last dream" hidden>Undo dream</button>
+          <button id="dreamNowBtn" class="btn primary sm" title="Re-read recent chats and reorganize memory now">Dream now</button>
+        </div>
+      </div>
+      <div class="toggle-row">
+        <label><input type="checkbox" id="dreamToggle" /> Dream every night at</label>
+        <select id="dreamHour" aria-label="Dream hour"></select>
+      </div>
+    </div>
+    <div id="memBody" class="drawer-body mem-body"></div>
   </div>
 
   <!-- Email Triage Drawer -->

@@ -46,6 +46,8 @@ import {
   clearNotifications,
 } from './lib/notifications.js';
 import { listApprovals, listPendingApprovals, decideApproval } from './lib/sentinel.js';
+import { listMemoryDocs, readMemoryDoc, deleteMemoryDoc } from './lib/memory-docs.js';
+import { runDream, undoLastDream, getDreamStatus } from './lib/dream.js';
 import { getEmailStore, ingestEmail, dismissEmail, dismissAllEmails } from './lib/email.js';
 import { getPublicMs365Status, startMs365DeviceLogin, disconnectMs365, syncMs365Emails } from './lib/ms365.js';
 import { listEvents, addEvent, updateEvent, deleteEvent, syncIcsCalendar } from './lib/calendar.js';
@@ -267,6 +269,8 @@ const server = http.createServer(async (req, res) => {
         userLocation: CONFIG.userLocation,
         proactive: { ...CONFIG.proactive },
         memory: Array.isArray(memory) ? memory : [],
+        memoryDocs: await listMemoryDocs(),
+        dream: await getDreamStatus(),
         notes: Array.isArray(notes) ? notes : [],
         reminders: (Array.isArray(reminders) ? reminders : []).filter((r) => !r.done),
         events,
@@ -991,6 +995,27 @@ const server = http.createServer(async (req, res) => {
         )
       );
       return sendJson(res, 200, { ok: true });
+    }
+    if (req.method === 'GET' && pathname === '/api/memory') {
+      const [core, docs, dream] = await Promise.all([readJson('memory.json', []), listMemoryDocs(), getDreamStatus()]);
+      return sendJson(res, 200, { core, docs, dream });
+    }
+    const memDocMatch = pathname.match(/^\/api\/memory\/docs\/([^/]+)$/);
+    if (memDocMatch && req.method === 'GET') {
+      const doc = await readMemoryDoc(decodeURIComponent(memDocMatch[1]));
+      return doc ? sendJson(res, 200, doc) : sendJson(res, 404, { error: 'No such memory doc' });
+    }
+    if (memDocMatch && req.method === 'DELETE') {
+      const ok = await deleteMemoryDoc(decodeURIComponent(memDocMatch[1]));
+      broadcast({ type: 'memory_updated' });
+      return sendJson(res, ok ? 200 : 404, { ok });
+    }
+    if (req.method === 'POST' && pathname === '/api/memory/dream') {
+      runDream({ reason: 'manual' }).catch(() => {});
+      return sendJson(res, 202, { ok: true, started: true });
+    }
+    if (req.method === 'POST' && pathname === '/api/memory/dream/undo') {
+      try { return sendJson(res, 200, await undoLastDream()); } catch (err) { return sendJson(res, 409, { error: String(err.message || err) }); }
     }
     if (req.method === 'DELETE' && pathname === '/api/memory') {
       await writeJson('memory.json', []);
