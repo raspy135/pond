@@ -775,8 +775,13 @@ const server = http.createServer(async (req, res) => {
     const htmlViewMatch = pathname.match(/^\/html\/(h[0-9a-f]{8})$/);
     if (req.method === 'GET' && htmlViewMatch) {
       const h = await readHtml(htmlViewMatch[1]);
-      if (!h || h.kind !== 'html') { res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('Not found (it may have been pruned from the temp cache)'); }
+      if (!h) { res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('Not found (it may have been pruned from the temp cache)'); }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': 'sandbox allow-scripts allow-forms', 'Cache-Control': 'no-store' });
+      if (h.kind === 'threejs') {
+        // A 3D scene: the same stage the chat uses (public/markdown.js builds it), as a page of its own.
+        const code = JSON.stringify(h.content).replace(/</g, '\\u003c').replace(/\u2028|\u2029/g, (c) => `\\u${c.charCodeAt(0).toString(16)}`);
+        return res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${String(h.title || '3D scene').replace(/[<&]/g, '')}</title></head><body><script src="/markdown.js"></script><script>document.open();document.write(window.pondThreeSrcdoc(${code}));document.close();</script></body></html>`);
+      }
       return res.end(preparePage(h.content, { embed: isEmbed(req) }));
     }
     const artifactViewMatch = pathname.match(/^\/artifacts\/([A-Za-z0-9_-]+)$/);

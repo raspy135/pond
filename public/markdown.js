@@ -200,7 +200,7 @@ ${user}
         } else if (lang === 'threejs' || lang === 'three') {
           const hm = code.match(/^\s*\/\/\s*height:\s*(\d{2,4})/);
           const h = Math.max(200, Math.min(900, hm ? Number(hm[1]) : 380));
-          out.push(`<div class="artifact artifact-3d"><div class="artifact-bar"><span>3D · three.js · <span class="artifact-id">${htmlId(code)}</span></span><span class="artifact-actions"><button type="button" class="artifact-btn" data-act="expand" title="Expand">⤢</button><button type="button" class="artifact-btn" data-act="code" title="Show code">&lt;/&gt;</button></span></div><iframe sandbox="allow-scripts" loading="lazy" style="height:${h}px" srcdoc="${esc(threeSrcdoc(code))}"></iframe><pre class="artifact-code" hidden><code class="lang-js">${esc(code)}</code></pre></div>`);
+          out.push(`<div class="artifact artifact-3d"><div class="artifact-bar"><span>3D · three.js · <span class="artifact-id">${htmlId(code)}</span></span><span class="artifact-actions"><a class="artifact-btn" href="/html/${htmlId(code)}" target="_blank" rel="noopener" title="Open full page">Open ↗</a><button type="button" class="artifact-btn" data-act="expand" title="Expand">⤢</button><button type="button" class="artifact-btn" data-act="code" title="Show code">&lt;/&gt;</button></span></div><iframe sandbox="allow-scripts" loading="lazy" style="height:${h}px" srcdoc="${esc(threeSrcdoc(code))}"></iframe><pre class="artifact-code" hidden><code class="lang-js">${esc(code)}</code></pre></div>`);
         } else if (lang === 'html') {
           const hid = htmlId(code);
           const hm = code.match(/^\s*<!--\s*height:\s*(\d{2,4})\s*-->/i);
@@ -271,4 +271,5 @@ ${user}
   }
 
   window.renderMarkdown = renderMarkdown;
+  window.pondThreeSrcdoc = threeSrcdoc; // /html/<id> of a saved 3D scene builds its page with this
 })();
