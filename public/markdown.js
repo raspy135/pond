@@ -104,6 +104,34 @@ ${user}
     return null;
   };
 
+  // Bare URLs in (already escaped) text. URL characters are ASCII only, so a link written right before Japanese text
+  // ("https://example.comを参照") stops at the right place; trailing punctuation and unbalanced brackets stay outside.
+  const BARE_URL = /(?<![A-Za-z0-9@\/._%-])(?:https?:\/\/|www\.)[A-Za-z0-9\-._~:\/?#\[\]@!$&'()*+,;=%]+/g;
+  const count = (str, ch) => str.split(ch).length - 1;
+  function linkifyUrl(m) {
+    let url = m;
+    let tail = '';
+    const ent = url.search(/&(?:lt|gt|quot|#39);/); // <url> or "url" in the text
+    if (ent !== -1) { tail = url.slice(ent); url = url.slice(0, ent); }
+    for (;;) {
+      if (url.endsWith('&amp;')) { tail = '&amp;' + tail; url = url.slice(0, -5); continue; }
+      const last = url.slice(-1);
+      if (".,;:!?'*".includes(last) && last) { tail = last + tail; url = url.slice(0, -1); continue; }
+      if (last === ')' && count(url, '(') < count(url, ')')) { tail = last + tail; url = url.slice(0, -1); continue; }
+      if (last === ']' && count(url, '[') < count(url, ']')) { tail = last + tail; url = url.slice(0, -1); continue; }
+      break;
+    }
+    if (!/^(?:https?:\/\/|www\.)[A-Za-z0-9]/.test(url) || !/[A-Za-z0-9]\.[A-Za-z]|localhost|\d+\.\d+|:\d/.test(url.replace(/^https?:\/\//, ''))) return m;
+    const href = url.startsWith('www.') ? `https://${url}` : url;
+    return `<a href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>${tail}`;
+  }
+  function autolink(html) {
+    return html
+      .split(/(<a\b[\s\S]*?<\/a>|<code>[\s\S]*?<\/code>|<[^>]+>)/)
+      .map((part, i) => (i % 2 ? part : part.replace(BARE_URL, linkifyUrl)))
+      .join('');
+  }
+
   function inline(text) {
     let s = esc(text);
     // inline code
@@ -120,6 +148,8 @@ ${user}
     });
     // bare Pond Share paths (/share/…) become links too
     s = s.replace(/(^|[\s(])(\/share\/[^\s<)]*[^\s<).,;:!?])/g, (_, pre, u) => `${pre}<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`);
+    // bare web addresses (https://…, www.…) become links — outside existing links, code and tags
+    s = autolink(s);
     // bold / italic / strikethrough
     s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
