@@ -2992,6 +2992,8 @@ function connectEvents() {
 // ---------- Wiring ----------
 composer.addEventListener('submit', (e) => {
   e.preventDefault();
+  // A reply still attached from another chat must never be stopped by sending here: let go of it and send.
+  if (attachedTurn && attachedTurn.sessionId !== currentSessionId) detachTurnView();
   if (busy && activeChatAbort) {
     if (attachedTurn) attachedTurn.stopRequested = true;
     if (activeRequestId) {
@@ -3112,10 +3114,13 @@ async function startChatWith(title, text) {
 
 $('#newChatBtn').addEventListener('click', async () => {
   try {
+    detachTurnView(); // a reply running in the chat we leave keeps going on the server — and the send button is ours again
     await fetch('/api/sessions', { method: 'POST' });
     const resp = await fetch('/api/conversation');
     const data = await resp.json();
     currentSessionId = data.sessionId;
+    lastRenderedSessionKey = '';
+    renderedConv = { sessionId: data.sessionId || null, count: 0, liveTail: false, expectUser: false, liveBody: null, finishedAt: 0 };
     history = [];
     messagesEl.innerHTML = '';
     showGreeting();
