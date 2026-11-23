@@ -1291,6 +1291,136 @@ function openDrawer(id) {
   if (id === 'memDrawer') loadMemoryDrawer();
 }
 
+// ---------- Search: chats, email, notifications ----------
+const search = { timer: null, seq: 0, terms: [] };
+function markTerms(text) {
+  let html = escapeHtml(text);
+  for (const t of search.terms) {
+    if (!t) continue;
+    const re = new RegExp(escapeHtml(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    html = html.replace(re, (m) => `<mark>${m}</mark>`);
+  }
+  return html;
+}
+function setSearching(on) {
+  $('#sidebar').classList.toggle('searching', on);
+  $('#searchResults').hidden = !on;
+}
+function clearSearch() {
+  $('#searchInput').value = '';
+  setSearching(false);
+  $('#searchResults').innerHTML = '';
+}
+async function runSearch() {
+  const q = $('#searchInput').value.trim();
+  if (!q) { setSearching(false); return; }
+  const seq = ++search.seq;
+  let data;
+  try { data = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { cache: 'no-store' }).then((r) => r.json()); } catch { return; }
+  if (seq !== search.seq) return; // a newer query is on its way
+  search.terms = data.terms || [];
+  setSearching(true);
+  renderSearchResults(data);
+}
+function searchItem({ title, meta = '', snippet = '', onClick, iconName }) {
+  const b = document.createElement('button');
+  b.className = 'search-item';
+  b.innerHTML = `<div class="search-item-top">${iconName ? icon(iconName, 12) : ''}<span class="search-item-title">${markTerms(title)}</span>${meta ? `<span class="search-item-meta">${escapeHtml(meta)}</span>` : ''}</div>${snippet ? `<div class="search-item-snippet">${markTerms(snippet)}</div>` : ''}`;
+  if (!title) b.classList.add('cont'); // another match in the same chat
+  b.onclick = onClick;
+  return b;
+}
+const shortDate = (iso) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toDateString() === new Date().toDateString() ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+};
+function renderSearchResults(data) {
+  const box = $('#searchResults');
+  box.innerHTML = '';
+  const group = (label, n) => {
+    const h = document.createElement('div');
+    h.className = 'side-title search-group';
+    h.textContent = `${label} · ${n}`;
+    box.appendChild(h);
+  };
+  const leave = () => { document.body.classList.remove('sidebar-open'); };
+  if (data.chats?.length) {
+    group('Chats', data.chats.length);
+    for (const c of data.chats) {
+      if (!c.matches.length) box.appendChild(searchItem({ title: c.title, meta: shortDate(c.updatedAt), iconName: 'list', onClick: () => { leave(); openChatAt(c.sessionId, null); } }));
+      c.matches.forEach((m, i) => box.appendChild(searchItem({
+        title: i ? '' : c.title, meta: i ? '' : shortDate(m.ts || c.updatedAt), snippet: `${m.role === 'user' ? 'You' : 'Pond'}: ${m.snippet}`, iconName: i ? '' : 'list',
+        onClick: () => { leave(); openChatAt(c.sessionId, m.ts); },
+      })));
+    }
+  }
+  if (data.emails?.length) {
+    group('Email', data.emails.length);
+    for (const m of data.emails) box.appendChild(searchItem({ title: m.subject, meta: shortDate(m.date), snippet: `${m.from} — ${m.snippet}`, iconName: 'mail', onClick: () => { leave(); openEmailView(m.id); } }));
+  }
+  if (data.notifications?.length) {
+    group('Notifications', data.notifications.length);
+    for (const n of data.notifications) box.appendChild(searchItem({
+      title: n.title, meta: shortDate(n.ts), snippet: n.snippet, iconName: 'bell',
+      onClick: () => {
+        leave();
+        fetch('/api/notifications/read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: n.id }) }).catch(() => {});
+        if (n.emailId) openEmailView(n.emailId);
+        else if (n.sessionId) openChatAt(n.sessionId, null);
+        else openDrawer('notifDrawer');
+      },
+    }));
+  }
+  if (!data.chats?.length && !data.emails?.length && !data.notifications?.length) box.innerHTML = '<div class="empty">Nothing found</div>';
+}
+// Open a chat and bring a message into view.
+async function openChatAt(sessionId, ts) {
+  if (sessionId !== currentSessionId) await switchSession(sessionId);
+  if (!ts) return;
+  const row = [...messagesEl.querySelectorAll('.msg-row[data-ts]')].find((r) => r.dataset.ts === ts);
+  if (!row) return;
+  row.scrollIntoView({ block: 'center' });
+  row.classList.remove('search-flash');
+  void row.offsetWidth;
+  row.classList.add('search-flash');
+  setTimeout(() => row.classList.remove('search-flash'), 2400);
+}
+async function openEmailView(id) {
+  const r = await fetch(`/api/emails/${encodeURIComponent(id)}`).then((x) => x.json()).catch(() => ({ error: 'network error' }));
+  if (r.error || !r.email) { showToast(r.error || 'Email not found'); return; }
+  const m = r.email;
+  closeAllDrawers();
+  $('#emailViewSubject').textContent = m.subject || '(no subject)';
+  $('#emailViewMeta').textContent = `${m.from || ''} · ${new Date(m.date).toLocaleString()}${m.account ? ` · ${m.account}` : ''}`;
+  const body = String(m.body || m.snippet || '');
+  $('#emailViewBody').innerHTML = window.pondLinkify ? window.pondLinkify(body) : escapeHtml(body);
+  for (const a of $('#emailViewBody').querySelectorAll('a')) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
+  $('#emailViewSummarize').onclick = () => { $('#emailViewModal').hidden = true; startChatWith(`✉ ${m.subject || 'Email'}`, `Read email id "${m.id}" ("${m.subject}" from ${m.from}) and summarize what I need to know or do.`); };
+  $('#emailViewReply').onclick = () => { $('#emailViewModal').hidden = true; startChatWith(`✉ Reply: ${m.subject || 'Email'}`, `Read email id "${m.id}" ("${m.subject}" from ${m.from}) and draft a concise, polite reply for me to review.`); };
+  $('#emailViewModal').hidden = false;
+  $('#emailViewBody').scrollTop = 0;
+}
+$('#searchInput').addEventListener('input', () => {
+  clearTimeout(search.timer);
+  if (!$('#searchInput').value.trim()) { search.seq++; setSearching(false); return; }
+  search.timer = setTimeout(runSearch, 180);
+});
+$('#searchInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { clearSearch(); $('#searchInput').blur(); }
+  if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); $('#searchResults .search-item')?.click(); }
+});
+$('#searchKbd').textContent = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K';
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    document.body.classList.add('sidebar-open');
+    $('#searchInput').focus();
+    $('#searchInput').select();
+  }
+});
+$('#emailViewModal').addEventListener('click', (e) => { if (e.target === $('#emailViewModal')) $('#emailViewModal').hidden = true; });
+
 // ---------- Memory: core facts, topic docs, nightly dream ----------
 const memUi = { doc: null, data: null };
 const memLinkify = (html) => html.replace(/\[\[([^\]<>\n]{1,80})\]\]/g, (_, n) => `<a href="#" class="memdoc-link" data-memdoc="${n.trim()}">${n.trim()}</a>`);
@@ -2723,6 +2853,7 @@ async function loadConversation({ force = true, silent = false } = {}) {
         }
         history.push({ role: 'assistant', content: m.content || '' });
         const bodyEl = addMessage('assistant', '', { proactive: !!m.proactive, tag: m.tag || '' });
+        if (m.ts) bodyEl.closest('.msg-row').dataset.ts = m.ts;
         if (m.reasoning) addThoughtBlock(bodyEl.closest('.bubble'), m.reasoning, { open: false, label: 'Thought' });
         renderAssistantBody(bodyEl, m.content || '');
         if (m.pluginFooters) setMessageFooter(bodyEl, m.pluginFooters);
@@ -2741,6 +2872,7 @@ async function loadConversation({ force = true, silent = false } = {}) {
       } else if (m.role === 'user') {
         if (!m.cancelled) history.push({ role: 'user', content: m.content });
         const body = addMessage('user', m.content);
+        if (m.ts) body.closest('.msg-row').dataset.ts = m.ts;
         appendMessageImages(body, (m.images || []).map((i) => i.url));
         if (m.cancelled) markStopped(body);
       }

@@ -51,6 +51,7 @@ import {
 import { listApprovals, listPendingApprovals, decideApproval } from './lib/sentinel.js';
 import { listMemoryDocs, readMemoryDoc, deleteMemoryDoc } from './lib/memory-docs.js';
 import { runDream, undoLastDream, getDreamStatus } from './lib/dream.js';
+import { searchAll } from './lib/search.js';
 import { getEmailStore, ingestEmail, dismissEmail, dismissAllEmails } from './lib/email.js';
 import { getPublicMs365Status, startMs365DeviceLogin, disconnectMs365, syncMs365Emails } from './lib/ms365.js';
 import { listEvents, addEvent, updateEvent, deleteEvent, syncIcsCalendar } from './lib/calendar.js';
@@ -234,6 +235,11 @@ const server = http.createServer(async (req, res) => {
 
     // Each window shows its own chat and names it (?session=…); without one, the chat used last.
     const chatFor = async (id) => (await getChatSession(id)) || (await getActiveSession()).session;
+
+    // Search box: chats, emails, notifications
+    if (req.method === 'GET' && pathname === '/api/search') {
+      return sendJson(res, 200, await searchAll(url.searchParams.get('q') || '', { limit: 20 }));
+    }
 
     // Main UI State snapshot
     if (req.method === 'GET' && pathname === '/api/state') {
@@ -458,6 +464,13 @@ const server = http.createServer(async (req, res) => {
         emails: items.map(({ body, ...rest }) => rest),
         drafts: store.drafts || [],
       });
+    }
+    // One email in full (the search box opens it)
+    const emailOneMatch = pathname.match(/^\/api\/emails\/([^/]+)$/);
+    if (req.method === 'GET' && emailOneMatch) {
+      const id = decodeURIComponent(emailOneMatch[1]);
+      const m = ((await getEmailStore()).items || []).find((x) => x.id === id);
+      return m ? sendJson(res, 200, { email: m }) : sendJson(res, 404, { error: 'Email not found (it may have been pruned)' });
     }
     if (req.method === 'POST' && pathname === '/api/emails/dismiss-all') {
       await dismissAllEmails();

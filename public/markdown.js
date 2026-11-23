@@ -301,5 +301,6 @@ ${user}
   }
 
   window.renderMarkdown = renderMarkdown;
-  window.pondThreeSrcdoc = threeSrcdoc; // /html/<id> of a saved 3D scene builds its page with this
+  window.pondThreeSrcdoc = threeSrcdoc;
+  window.pondLinkify = (text) => autolink(esc(text)); // plain text (an email body) with clickable links // /html/<id> of a saved 3D scene builds its page with this
 })();

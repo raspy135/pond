@@ -22,6 +22,12 @@
     <!-- Sidebar -->
     <aside id="sidebar">
       <button id="newChatBtn" class="new-chat-btn"><span data-icon="plus" data-size="15"></span><span>New chat</span></button>
+      <div class="side-search">
+        <span data-icon="search" data-size="14"></span>
+        <input id="searchInput" type="search" placeholder="Search chats, email, notifications" autocomplete="off" spellcheck="false" aria-label="Search" />
+        <kbd id="searchKbd">⌘K</kbd>
+      </div>
+      <div id="searchResults" class="search-results" hidden></div>
 
       <div class="side-section">
         <div class="side-title">Chats</div>
@@ -215,6 +221,22 @@
       <div id="calDay" class="cal-day"></div>
       <div id="calUpcoming" class="cal-day"></div>
       <div id="calFoot" class="cal-foot"></div>
+    </div>
+  </div>
+
+  <!-- Email viewer (opened from search) -->
+  <div id="emailViewModal" class="modal-backdrop" hidden>
+    <div class="modal email-view">
+      <div class="modal-header">
+        <h2 class="inline-icon-text"><span data-icon="mail" data-size="17"></span><span id="emailViewSubject">Email</span></h2>
+        <button class="close-btn" data-close="emailViewModal" aria-label="Close"><span data-icon="close" data-size="18"></span></button>
+      </div>
+      <div class="email-view-meta" id="emailViewMeta"></div>
+      <div class="modal-body email-view-body" id="emailViewBody"></div>
+      <div class="email-view-actions btn-group">
+        <button class="btn sm" id="emailViewSummarize">Read &amp; Summarize</button>
+        <button class="btn sm" id="emailViewReply">Draft Reply</button>
+      </div>
     </div>
   </div>
 
