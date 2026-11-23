@@ -57,6 +57,15 @@ let history = [];
 let busy = false;
 let assistantName = 'Pond';
 let currentSessionId = null;
+// Each window (tab / installed app) shows its own chat; other windows and devices never switch it.
+// Remembered per tab, so a reload stays on the same chat.
+const SESSION_KEY = 'pond_window_session';
+try { currentSessionId = sessionStorage.getItem(SESSION_KEY) || null; } catch { /* storage off */ }
+function setCurrentSession(id) {
+  currentSessionId = id || null;
+  try { if (id) sessionStorage.setItem(SESSION_KEY, id); else sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
+}
+const chatQs = () => (currentSessionId ? `?session=${encodeURIComponent(currentSessionId)}` : '');
 let lastRenderedSessionKey = '';
 // What the chat on screen was drawn from: `count` saved messages of `sessionId`, plus (liveTail) a reply that was
 // streamed in live after them. When that reply is saved, the saved copy is adopted without redrawing the chat.
@@ -420,14 +429,16 @@ addEventListener('message', (e) => {
 });
 
 // ---------- Model chip: switch model profile and reasoning effort from the top bar ----------
+let chatLlm = { profile: '', effort: '' }; // the model of the chat on screen (from /api/state)
 const EFFORT_CHOICES = [['', 'Default'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Max']];
 async function renderModelMenu() {
   const menu = $('#modelMenu');
   menu.innerHTML = '<div class="model-menu-note">Loading…</div>';
   let cfg;
   try { cfg = await fetch('/api/llm', { cache: 'no-store' }).then((r) => r.json()); } catch { menu.innerHTML = '<div class="model-menu-note">Could not load models</div>'; return; }
-  const active = cfg.activeProfile;
-  const effort = cfg.profiles?.[active]?.reasoningEffort || '';
+  // this chat's model (its own pick, else the default)
+  const active = chatLlm.profile && cfg.profiles?.[chatLlm.profile] ? chatLlm.profile : cfg.activeProfile;
+  const effort = chatLlm.profile ? chatLlm.effort || '' : cfg.profiles?.[active]?.reasoningEffort || '';
   const rows = Object.entries(cfg.profiles || {}).map(([key, p]) => `
     <button type="button" class="model-menu-item${key === active ? ' active' : ''}" role="menuitemradio" aria-checked="${key === active}" data-profile="${escapeHtml(key)}">
       <span class="mm-check">${key === active ? icon('check', 14) : ''}</span>
@@ -436,7 +447,7 @@ async function renderModelMenu() {
   const efforts = EFFORT_CHOICES.map(([v, l]) => `<button type="button" class="effort-btn${v === effort ? ' active' : ''}" data-effort="${v}">${l}</button>`).join('');
   menu.innerHTML = `<div class="model-menu-head">Model</div>${rows}
     <div class="model-menu-head">Reasoning effort</div><div class="effort-row">${efforts}</div>
-    <div class="model-menu-note">Some models put the effort into the prompt — changing it may make the next reply re-read the chat once.</div>
+    <div class="model-menu-note">For this chat (and new chats). Some models put the effort into the prompt — changing it may make the next reply re-read the chat once.</div>
     <button type="button" class="model-menu-item manage" data-manage="1"><span class="mm-check"></span><span class="mm-main"><span class="mm-label">Manage models…</span></span></button>`;
 }
 function closeModelMenu() { $('#modelMenu').hidden = true; $('#modelChip').setAttribute('aria-expanded', 'false'); }
@@ -453,8 +464,11 @@ $('#modelMenu').addEventListener('click', async (e) => {
   if (!item) return;
   if (item.dataset.manage) { closeModelMenu(); openHub('llm'); return; }
   const body = item.dataset.profile !== undefined ? { profile: item.dataset.profile } : { effort: item.dataset.effort };
-  const r = await fetch('/api/llm/active', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((x) => x.json()).catch(() => ({}));
+  const r = currentSessionId
+    ? await fetch(`/api/sessions/${encodeURIComponent(currentSessionId)}/llm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((x) => x.json()).catch(() => ({}))
+    : await fetch('/api/llm/active', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((x) => x.json()).catch(() => ({}));
   if (r.error) { showToast(r.error); return; }
+  if (r.llm) chatLlm = { profile: r.llm.profile, effort: r.llm.effort || '' };
   if (body.profile !== undefined) closeModelMenu(); else await renderModelMenu();
   refreshState();
 });
@@ -998,7 +1012,7 @@ let latestPendingApprovals = [];
 
 async function refreshState() {
   try {
-    const resp = await fetch('/api/state');
+    const resp = await fetch(`/api/state${chatQs()}`);
     const s = await resp.json();
     assistantName = s.assistantName || 'Pond';
     if (s.ui && window.PondMascot) {
@@ -1020,6 +1034,7 @@ async function refreshState() {
     const ctxLabel = s.contextLength ? ` · ${Math.round(s.contextLength / 1000)}k` : '';
     const effortLabel = s.reasoningEffort && s.reasoningEffort !== 'default' ? ` · ${s.reasoningEffort}` : '';
     $('#modelLine').textContent = `${s.model}${ctxLabel}${effortLabel}`;
+    if (s.chatLlm) chatLlm = { profile: s.chatLlm.profile || '', effort: s.chatLlm.effort || '' };
     $('#modelChipText').textContent = s.llmLabel && s.llmLabel !== 'Default' ? s.llmLabel : String(s.model || 'Model').split('/').pop();
     $('#modelChipEffort').textContent = s.reasoningEffort && s.reasoningEffort !== 'default' ? s.reasoningEffort : '';
     $('#modelChip').title = `${s.model} — switch model / reasoning effort`;
@@ -2442,7 +2457,7 @@ async function loadSkillsPanel() {
 // Pinned chats sit at the top in the user's order (drag to reorder; drag a chat above the line to pin it, below to
 // unpin). Every other chat is listed by recent activity. Double-click a title (or the pencil) to rename.
 function sessionsKeyOf(data) {
-  return `${data.activeId || ''}|${(data.pinned || []).join(',')}|${(data.sessions || []).map((x) => `${x.id}:${x.updatedAt || ''}:${x.title || ''}`).join(',')}`;
+  return `${(data.running || []).join(',')}|${(data.pinned || []).join(',')}|${(data.sessions || []).map((x) => `${x.id}:${x.updatedAt || ''}:${x.title || ''}`).join(',')}`;
 }
 
 const sessUi = { renamingId: null, dragging: false, pinned: [], suppressClick: 0 };
@@ -2577,6 +2592,7 @@ async function loadSessions({ force = false } = {}) {
     const byId = new Map(sessions.map((s) => [s.id, s]));
     sessUi.pinned = (data.pinned || []).filter((id) => byId.has(id));
     const pinnedSet = new Set(sessUi.pinned);
+    const runningSet = new Set(data.running || []); // chats with a reply in progress
     const ordered = [...sessUi.pinned.map((id) => byId.get(id)), ...sessions.filter((s) => !pinnedSet.has(s.id))];
     if (!list.dataset.touchGuard) {
       list.dataset.touchGuard = '1';
@@ -2594,7 +2610,7 @@ async function loadSessions({ force = false } = {}) {
         list.appendChild(sep);
       }
       const row = document.createElement('div');
-      row.className = 'session-item' + (s.id === currentSessionId ? ' active' : '') + (pinned ? ' pinned' : '');
+      row.className = 'session-item' + (s.id === currentSessionId ? ' active' : '') + (pinned ? ' pinned' : '') + (runningSet.has(s.id) ? ' running' : '');
       row.dataset.id = s.id;
       const title = document.createElement('button');
       title.className = 'title';
@@ -2663,7 +2679,14 @@ function adoptSavedTurn(data, key) {
 
 async function loadConversation({ force = true, silent = false } = {}) {
   try {
-    const resp = await fetch('/api/conversation', { cache: 'no-store' });
+    let resp = await fetch(`/api/conversation${chatQs()}`, { cache: 'no-store' });
+    if (resp.status === 404 && currentSessionId) { // this window's chat was deleted: go to the chat used last
+      setCurrentSession(null);
+      detachTurnView();
+      lastRenderedSessionKey = '';
+      force = true;
+      resp = await fetch('/api/conversation', { cache: 'no-store' });
+    }
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
     const key = `${data.sessionId || ''}|${data.updatedAt || ''}|${(data.messages || []).length}`;
@@ -2675,7 +2698,8 @@ async function loadConversation({ force = true, silent = false } = {}) {
 
     const wasNearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 120;
     detachTurnView(); // the DOM is rebuilt below; a running turn is re-attached from the server afterwards
-    currentSessionId = data.sessionId || null;
+    if (data.sessionId !== currentSessionId) detachTurnView();
+    setCurrentSession(data.sessionId || null);
     lastRenderedSessionKey = key;
     history = [];
     messagesEl.innerHTML = '';
@@ -2741,7 +2765,7 @@ async function syncAll() {
   if (syncInFlight || document.visibilityState === 'hidden') return false;
   syncInFlight = true;
   try {
-    const resp = await fetch('/api/sync', { cache: 'no-store' });
+    const resp = await fetch(`/api/sync${chatQs()}`, { cache: 'no-store' });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const s = await resp.json();
     if (s.rev) lastSyncRev = s.rev;
@@ -2790,13 +2814,15 @@ function scheduleSyncRecovery() {
 async function switchSession(id) {
   if (id === currentSessionId) { document.body.classList.remove('sidebar-open'); return; }
   detachTurnView(); // the reply in the chat we're leaving keeps running on the server
-  await fetch('/api/sessions/activate', {
+  fetch('/api/sessions/activate', { // only marks it "used last"; other windows don't follow
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id }),
-  });
-  currentSessionId = id;
+  }).catch(() => {});
+  setCurrentSession(id);
+  lastRenderedSessionKey = '';
   await loadConversation();
+  refreshState(); // this chat's model and context use
   loadSessions();
   document.body.classList.remove('sidebar-open');
 }
@@ -2857,13 +2883,18 @@ function connectEvents() {
       return;
     }
 
-    if (payload.type === 'sessions') { loadSessions(); return; }
+    if (payload.type === 'sessions') {
+      loadSessions();
+      if (payload.deleted && payload.deleted === currentSessionId) loadConversation({ force: true }); // falls back to another chat
+      return;
+    }
     if (payload.type === 'settings_updated') { refreshState(); if (!$('#hubModal').hidden) loadAppearancePanel(); return; }
     if (payload.type === 'turn_started') {
       if (payload.sessionId === currentSessionId && payload.clientId !== clientId && !attachedTurn) attachToTurn({ requestId: payload.requestId, startedAt: Date.now() });
+      loadSessions(); // mark the chat as running
       return;
     }
-    if (payload.type === 'turn_finished') return; // attached views end via their own stream
+    if (payload.type === 'turn_finished') { loadSessions(); return; } // attached views end via their own stream
     if (payload.type === 'plugin_ui') {
       if (payload.slot === 'status') renderPluginStatus(payload.items || []);
       if (payload.slot === 'footer') {
@@ -2874,13 +2905,8 @@ function connectEvents() {
     }
     if (payload.type === 'plugins_updated') { if (!$('#hubModal').hidden) loadPluginsPanel(); fetch('/api/plugins/ui').then((r) => r.json()).then((u) => renderPluginStatus(u.status)).catch(() => {}); return; }
     if (payload.type === 'skills_updated') { refreshSkillCache(); if (!$('#hubModal').hidden) loadSkillsPanel(); return; }
-    if (payload.type === 'session_switched') {
-      if (payload.sessionId && payload.sessionId !== currentSessionId) {
-        currentSessionId = payload.sessionId;
-        loadConversation().then(loadSessions);
-      }
-      return;
-    }
+    if (payload.type === 'session_switched') return; // windows choose their own chat
+    if (payload.type === 'chat_llm') { if (payload.sessionId === currentSessionId) refreshState(); return; }
 
     if (payload.type === 'proactive' && payload.routine) {
       if (payload.sessionId === currentSessionId && !attachedTurn) { lastRenderedSessionKey = ''; loadConversation({ force: false, silent: true }); }
@@ -3086,7 +3112,6 @@ async function continueInNewChat(text, tag = '') {
     const r = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, carry: { content: text, tag, at: new Date().toISOString() } }) });
     const { session } = await r.json();
     detachTurnView();
-    currentSessionId = null; // force switchSession to load it
     await switchSession(session.id);
     input.focus();
   } catch {
@@ -3100,7 +3125,7 @@ async function startChatWith(title, text) {
     const r = await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
     const { session } = await r.json();
     detachTurnView(); // a reply running in the chat we leave keeps going on the server
-    currentSessionId = session.id;
+    setCurrentSession(session.id);
     lastRenderedSessionKey = '';
     history = [];
     messagesEl.innerHTML = '';
@@ -3115,16 +3140,16 @@ async function startChatWith(title, text) {
 $('#newChatBtn').addEventListener('click', async () => {
   try {
     detachTurnView(); // a reply running in the chat we leave keeps going on the server — and the send button is ours again
-    await fetch('/api/sessions', { method: 'POST' });
-    const resp = await fetch('/api/conversation');
-    const data = await resp.json();
-    currentSessionId = data.sessionId;
+    const { session } = await fetch('/api/sessions', { method: 'POST' }).then((r) => r.json());
+    const data = { sessionId: session.id };
+    setCurrentSession(session.id);
     lastRenderedSessionKey = '';
     renderedConv = { sessionId: data.sessionId || null, count: 0, liveTail: false, expectUser: false, liveBody: null, finishedAt: 0 };
     history = [];
     messagesEl.innerHTML = '';
     showGreeting();
     loadSessions();
+    refreshState();
   } catch {
     showToast('Could not create a new chat');
   }
@@ -3824,8 +3849,9 @@ $('#quickAddMcpBtn').addEventListener('click', async () => {
 
 $('#compactBtn').addEventListener('click', async () => {
   showToast('Compacting older chat history…');
-  const res = await fetch('/api/sessions/compact', { method: 'POST' }).then((r) => r.json());
-  if (!res.compacted) showToast('Chat is already short — nothing to compact yet.');
+  const res = await fetch('/api/sessions/compact', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: currentSessionId }) }).then((r) => r.json());
+  if (res.error) showToast(res.error);
+  else if (!res.compacted) showToast('Chat is already short — nothing to compact yet.');
   refreshState();
 });
 
@@ -3897,7 +3923,8 @@ window.addEventListener('focus', () => syncTick());
   const wantSession = new URLSearchParams(location.search).get('session');
   if (wantSession) {
     window.history.replaceState(null, '', location.pathname); // tidy URL (`history` here is the chat array)
-    await fetch('/api/sessions/activate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: wantSession }) }).catch(() => {});
+    setCurrentSession(wantSession);
+    fetch('/api/sessions/activate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: wantSession }) }).catch(() => {});
   }
   await loadConversation({ force: true });
   await loadSessions();

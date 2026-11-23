@@ -20,6 +20,9 @@ import { markTurnCancelled,
   appendToSession,
   touchSessionMeta,
   renameSession,
+  getChatSession,
+  markSessionUsed,
+  setSessionLlm,
   setPinnedSessions,
   migrateLegacyConversation,
   sessionFile,
@@ -66,14 +69,14 @@ import {
 import { listArtifacts, getArtifact, deleteArtifact, registerSettingsReloadHook } from './lib/tools.js';
 import { webSearch, activeSearchBackend } from './lib/web.js';
 import { detectPython, resolveRunFile } from './lib/python.js';
-import { ensureLlmConfig, getPublicLlmConfig, saveLlmConfig, resolveProfile, testLlmProfile, setActiveLlm } from './lib/llm-config.js';
+import { ensureLlmConfig, getPublicLlmConfig, saveLlmConfig, resolveProfile, testLlmProfile, setActiveLlm, defaultChatLlm, normEffort } from './lib/llm-config.js';
 import { listSkills, getSkill, deleteSkill } from './lib/skills.js';
 import { readHtml } from './lib/htmlcache.js';
 import { serveShare, ensureShareDir, preparePage, isEmbed } from './lib/share.js';
-import { startTurn, pushTurnEvent, endTurn, getRunningTurn, attachTurn } from './lib/turns.js';
+import { startTurn, pushTurnEvent, endTurn, getRunningTurn, attachTurn, getRunningSessionIds } from './lib/turns.js';
 import { loadPlugins, listPlugins, setPluginEnabled, savePluginSettings, reloadPlugins, handlePluginRoute, getPluginUiState, takeFooters, emitEvent } from './lib/plugins.js';
 import { getVapid, saveSubscription, removeSubscription, listSubscriptions, pushToAllDevices } from './lib/push.js';
-import { buildSystemPrompt, buildChatMessages, prepareSessionChatTurn, saveChatImages, compactSession, estimateSessionTokens, buildLiveContext, streamChat, runAgentTurn } from './lib/llm.js';
+import { resolveSessionProfile, buildSystemPrompt, buildChatMessages, prepareSessionChatTurn, saveChatImages, compactSession, estimateSessionTokens, buildLiveContext, streamChat, runAgentTurn } from './lib/llm.js';
 import { executeJob, getRunningJobIds, getRunningJobs } from './lib/scheduler.js';
 import {
   proactiveTick,
@@ -229,12 +232,15 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Each window shows its own chat and names it (?session=…); without one, the chat used last.
+    const chatFor = async (id) => (await getChatSession(id)) || (await getActiveSession()).session;
+
     // Main UI State snapshot
     if (req.method === 'GET' && pathname === '/api/state') {
       const [llm, activeSessWrap, memory, notes, reminders, events, tasks, jobs, watches, emailStore, ms365, pendingApprovals, unreadNotifications, artifacts] =
         await Promise.all([
           resolveProfile(),
-          getActiveSession(),
+          chatFor(url.searchParams.get('session')).then((session) => ({ session })),
           readJson('memory.json', []),
           readJson('notes.json', []),
           readJson('reminders.json', []),
@@ -252,17 +258,20 @@ const server = http.createServer(async (req, res) => {
       const activeEmails = (emailStore.items || []).filter((e) => !e.dismissed);
       const importantEmails = activeEmails.filter((e) => e.importance?.important).slice(0, 15);
       const sessionTokens = estimateSessionTokens(activeSessWrap.session);
+      // the model shown is the one THIS chat uses (its own pick, else the default)
+      const chatLlm = activeSessWrap.session?.llm ? await resolveSessionProfile(activeSessWrap.session) : llm;
       return sendJson(res, 200, {
         assistantName: CONFIG.assistantName,
         ui: CONFIG.ui,
-        model: llm.model,
-        inputTypes: llm.inputTypes,
-        llmProfile: llm.profileKey,
-        llmLabel: llm.label,
-        contextLength: llm.contextLength,
+        model: chatLlm.model,
+        inputTypes: chatLlm.inputTypes,
+        llmProfile: chatLlm.profileKey,
+        chatLlm: { profile: chatLlm.profileKey, effort: chatLlm.reasoningEffort || '' },
+        llmLabel: chatLlm.label,
+        contextLength: chatLlm.contextLength,
         sessionTokens,
-        reasoningEffort: llm.reasoningEffort || 'default',
-        keyConfigured: llm.keyConfigured,
+        reasoningEffort: chatLlm.reasoningEffort || 'default',
+        keyConfigured: chatLlm.keyConfigured,
         emailConfigured: isEmailConfigured() || ms365.connected,
         ms365Connected: ms365.connected,
         ms365Account: ms365.accountEmail || '',
@@ -867,11 +876,12 @@ const server = http.createServer(async (req, res) => {
     // Lightweight sync probe: clients poll this and only fetch the full conversation / chat list
     // when a key changed (cheap on mobile data).
     if (req.method === 'GET' && pathname === '/api/sync') {
-      const { idx, session } = await getActiveSession();
+      const session = await chatFor(url.searchParams.get('session'));
+      const idx = await loadSessionsIndex();
       return sendJson(res, 200, {
         rev: getSyncRev(),
         conversationKey: `${session.id || ''}|${session.updatedAt || ''}|${(session.messages || []).length}`,
-        sessionsKey: `${idx.activeId || ''}|${(idx.pinned || []).join(',')}|${(idx.sessions || []).map((x) => `${x.id}:${x.updatedAt || ''}:${x.title || ''}`).join(',')}`,
+        sessionsKey: `${getRunningSessionIds().join(',')}|${(idx.pinned || []).join(',')}|${(idx.sessions || []).map((x) => `${x.id}:${x.updatedAt || ''}:${x.title || ''}`).join(',')}`,
       });
     }
 
@@ -891,7 +901,10 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && pathname === '/api/conversation') {
-      const { session } = await getActiveSession();
+      const wanted = url.searchParams.get('session');
+      const own = wanted ? await getChatSession(wanted) : null;
+      if (wanted && !own) return sendJson(res, 404, { error: 'Chat not found (deleted?)', missing: wanted });
+      const session = own || (await getActiveSession()).session;
       return sendJson(res, 200, {
         activeTurn: getRunningTurn(session.id),
         sessionId: session.id,
@@ -902,7 +915,7 @@ const server = http.createServer(async (req, res) => {
       });
     }
     if (req.method === 'GET' && pathname === '/api/sessions') {
-      return sendJson(res, 200, await loadSessionsIndex());
+      return sendJson(res, 200, { ...(await loadSessionsIndex()), running: getRunningSessionIds() });
     }
     if (req.method === 'POST' && pathname === '/api/sessions') {
       const body = await readJsonBody(req).catch(() => ({}));
@@ -917,12 +930,13 @@ const server = http.createServer(async (req, res) => {
         s.messages.push({ role: 'assistant', content: text, proactive: true, tag: String(carry.tag || '').slice(0, 60), ts: new Date().toISOString() });
         await saveSession(s);
       }
-      broadcast({ type: 'sessions' });
-      broadcast({ type: 'session_switched', sessionId: s.id });
+      broadcast({ type: 'sessions' }); // the new chat opens in the window that made it, nowhere else
       return sendJson(res, 200, { session: { id: s.id, title: s.title, createdAt: s.createdAt, updatedAt: s.updatedAt } });
     }
     if (req.method === 'POST' && pathname === '/api/sessions/compact') {
-      const { session } = await getActiveSession();
+      const body = await readJsonBody(req).catch(() => ({}));
+      const session = await chatFor(body?.sessionId);
+      if (getRunningTurn(session.id)) return sendJson(res, 409, { error: 'Pond is replying in this chat — compact when it is done.' });
       const result = await compactSession(session, { keepRecent: 10, reason: 'manual' });
       return sendJson(res, 200, { ok: true, ...result });
     }
@@ -931,10 +945,7 @@ const server = http.createServer(async (req, res) => {
       const idx = await loadSessionsIndex();
       const target = idx.sessions.find((x) => x.id === body.id);
       if (!target) return sendJson(res, 404, { error: 'Session not found' });
-      idx.activeId = target.id;
-      await saveSessionsIndex(idx);
-      broadcast({ type: 'sessions' });
-      broadcast({ type: 'session_switched', sessionId: target.id });
+      await markSessionUsed(target.id); // remembered as "used last" only — other windows stay where they are
       return sendJson(res, 200, { ok: true, activeId: target.id });
     }
     if (req.method === 'POST' && pathname === '/api/sessions/pins') {
@@ -943,6 +954,27 @@ const server = http.createServer(async (req, res) => {
       const pinned = await setPinnedSessions(body.ids.slice(0, 200));
       broadcast({ type: 'sessions' });
       return sendJson(res, 200, { ok: true, pinned });
+    }
+    // A chat's model / reasoning effort. Also becomes the default for new chats.
+    const sessLlmMatch = pathname.match(/^\/api\/sessions\/([A-Za-z0-9_-]+)\/llm$/);
+    if (req.method === 'POST' && sessLlmMatch) {
+      const body = await readJsonBody(req).catch(() => ({}));
+      const session = await getChatSession(sessLlmMatch[1]);
+      if (!session) return sendJson(res, 404, { error: 'Chat not found' });
+      try {
+        const next = { ...(session.llm || (await defaultChatLlm())) };
+        if (body.profile !== undefined) {
+          const cfg = await getPublicLlmConfig();
+          if (!cfg.profiles?.[body.profile]) throw new Error(`No model profile "${body.profile}"`);
+          next.profile = body.profile;
+          if (body.effort === undefined) next.effort = String(cfg.profiles[body.profile].reasoningEffort || '');
+        }
+        if (body.effort !== undefined) next.effort = normEffort(body.effort);
+        await setSessionLlm(session.id, next);
+        await setActiveLlm({ profile: next.profile, effort: next.effort }); // new chats start with the last pick
+        broadcast({ type: 'chat_llm', sessionId: session.id });
+        return sendJson(res, 200, { ok: true, llm: next });
+      } catch (err) { return sendJson(res, 400, { error: String(err.message || err) }); }
     }
     const sessionMatch = pathname.match(/^\/api\/sessions\/([A-Za-z0-9_-]+)$/);
     if (req.method === 'PATCH' && sessionMatch) {
@@ -973,8 +1005,7 @@ const server = http.createServer(async (req, res) => {
         }
       }
       await saveSessionsIndex(idx);
-      broadcast({ type: 'sessions' });
-      broadcast({ type: 'session_switched', sessionId: idx.activeId });
+      broadcast({ type: 'sessions', deleted: id }); // windows showing it move to another chat themselves
       return sendJson(res, 200, { ok: true, activeId: idx.activeId });
     }
 
@@ -1046,12 +1077,6 @@ const server = http.createServer(async (req, res) => {
 
     // Main Streaming Chat Endpoint
     if (req.method === 'POST' && pathname === '/api/chat') {
-      const llm = await resolveProfile();
-      if (!llm.keyConfigured) {
-        return sendJson(res, 400, {
-          error: 'No API key configured. Set OPENAI_API_KEY in .env or configure a profile in data/llm.json (Agent Hub → LLM Engine).',
-        });
-      }
       const body = await readJsonBody(req, 40_000_000); // allows image attachments
       const clientId = typeof body.clientId === 'string' ? body.clientId : null;
       const requestId = typeof body.requestId === 'string' ? body.requestId : uid();
@@ -1065,6 +1090,14 @@ const server = http.createServer(async (req, res) => {
         if (!targetSession) targetSession = (await getActiveSession()).session;
         const running = getRunningTurn(targetSession.id);
         if (running) return sendJson(res, 409, { error: 'Pond is still replying in this chat — wait for it or press stop.', activeTurn: running });
+        // A chat keeps its own model from its first message on; later picks in other chats don't move it.
+        if (!targetSession.llm) targetSession.llm = await defaultChatLlm();
+      }
+      const llm = targetSession ? await resolveSessionProfile(targetSession) : await resolveProfile();
+      if (!llm.keyConfigured) {
+        return sendJson(res, 400, {
+          error: 'No API key configured. Set OPENAI_API_KEY in .env or configure a profile in data/llm.json (Agent Hub → LLM Engine).',
+        });
       }
 
       res.writeHead(200, {
@@ -1085,8 +1118,9 @@ const server = http.createServer(async (req, res) => {
       if (lastUser) {
         const session = targetSession;
         const images = await saveChatImages(body.images);
-        messages = await prepareSessionChatTurn(session, lastUser.content, { images });
+        messages = await prepareSessionChatTurn(session, lastUser.content, { images, profile: llm });
         sessionId = session.id;
+        await markSessionUsed(session.id); // check-ins go to the chat you're using
         userTs = session.messages[session.messages.length - 1]?.ts || null;
         // Keep session index metadata fresh
         await touchSessionMeta(session);
@@ -1106,7 +1140,7 @@ const server = http.createServer(async (req, res) => {
       const chatAbort = new AbortController();
       activeChatControllers.set(requestId, chatAbort);
       try {
-        for await (const event of streamChat(messages, { source: 'chat', signal: chatAbort.signal, requestId })) {
+        for await (const event of streamChat(messages, { source: 'chat', signal: chatAbort.signal, requestId, profile: llm })) {
           if (event.type === 'record') {
             recordedEntries = event.entries || [];
             continue;

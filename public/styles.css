@@ -883,3 +883,7 @@ html[data-look="plate"] .sess-sep span { background: var(--bg); }
 @media (max-width: 760px) { .mem-drawer { width: 100vw; max-width: 100vw; } }
 .mem-doc-md ul, .mem-doc-md ol { padding-left: 1.3em; margin: 4px 0; }
 .mem-doc-md p { margin: 6px 0; }
+
+/* a chat with a reply in progress (possibly in another window) */
+.session-item.running::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: sess-run 1.2s ease-in-out infinite; }
+@keyframes sess-run { 50% { opacity: .2; } }
