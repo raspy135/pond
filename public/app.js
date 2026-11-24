@@ -2434,7 +2434,7 @@ async function loadAppearancePanel() {
           <label class="btn sm${usingImage ? ' primary' : ''}">Upload image…<input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" data-act="upload" hidden></label>
         </div>
         <label class="checkbox-field" style="margin-top:6px"><input type="checkbox" data-act="circle" ${ui.avatarCircle !== false ? 'checked' : ''}> Crop to circle</label>
-        <div class="card-meta">${usingImage ? 'Using your image. Color below still sets the send button.' : usingWalker ? 'The icosahedron on four chubby legs. It trots while Pond works, hops when something new comes in, and lies down when sleepy.' : usingIcosa ? 'A wireframe icosahedron. It turns faster while Pond works. In the Plate look it is drawn in ink; in Classic, in the color below.' : 'The Pond ink splash. Or upload a PNG, JPG, WebP, GIF or SVG, up to 2 MB.'}</div>
+        <div class="card-meta">${usingImage ? 'Using your image. Color below still sets the send button.' : usingWalker ? 'The icosahedron on four sharp, pointed legs. It trots while Pond works, hops when something new comes in, and lies down when sleepy.' : usingIcosa ? 'A wireframe icosahedron. It turns faster while Pond works. In the Plate look it is drawn in ink; in Classic, in the color below.' : 'The Pond ink splash. Or upload a PNG, JPG, WebP, GIF or SVG, up to 2 MB.'}</div>
       </div>
     </div>
     <div class="section-sub">Color</div>

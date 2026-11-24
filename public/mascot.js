@@ -17,7 +17,7 @@ html[data-look=plate] .pm-walker{--pm-wire:currentColor}
 .pm-walker line{stroke:var(--pm-wire);vector-effect:non-scaling-stroke;stroke-linecap:round}
 .pm-walker circle{fill:var(--pm-wire)}
 .pm-walker circle.pm-ico-lit{fill:var(--pm-stain,#e8749f)}
-.pm-walker path.pm-wk-leg,.pm-walker circle.pm-wk-paw{fill:none;stroke:var(--pm-wire);vector-effect:non-scaling-stroke;stroke-linejoin:round}
+.pm-walker path.pm-wk-leg{fill:none;stroke:var(--pm-wire);vector-effect:non-scaling-stroke;stroke-linejoin:miter}
 .pm-walker .pm-wk-shadow{fill:var(--pm-wire);opacity:.13}
 .pm-walker .pm-move{transform-origin:50% 70%}
 .pond-mascot.pm-walker.pm-working svg{animation:none}
@@ -205,13 +205,13 @@ html[data-look=plate] .pm-walker{--pm-wire:currentColor}
   }
   const icoKick = () => { if (!icoRaf) icoRaf = requestAnimationFrame(icoLoop); };
 
-  // ---------- Walker character: the wireframe icosahedron on four chubby legs (water-bear stubby). The icosahedron
+  // ---------- Walker character: the wireframe icosahedron on four sharp, pointed legs. The icosahedron
   // keeps turning like the plain one; its moves borrow from legged robots like BigDog: a diagonal trot while working,
   // a crouch-and-launch jump, and the shove-and-recover scramble (feet stepping fast to catch the body). ----------
   const walkerState = new WeakMap();
-  const WK = { L: 0.4, R: 0.56, stand: 0.98 };
+  const WK = { L: 0.5, R: 0.52, stand: 1.1 };
   // hips under the body: [x, z, knee direction] (FL, FR, HL, HR); knees point toward the middle, like BigDog's
-  const WK_HIPS = [[0.3, 0.27, -1], [0.3, -0.27, -1], [-0.3, 0.27, 1], [-0.3, -0.27, 1]];
+  const WK_HIPS = [[0.3, 0.28, -1], [0.3, -0.28, -1], [-0.3, 0.28, 1], [-0.3, -0.28, 1]];
   const WK_TROT = [0, 0.5, 0.5, 0]; // diagonal pairs move together
   const frac = (x) => x - Math.floor(x);
   const ease = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
@@ -219,7 +219,7 @@ html[data-look=plate] .pm-walker{--pm-wire:currentColor}
   // The pose for this moment: body position/attitude and where each foot is (on the ground, or lifted).
   function walkerPose(el, st, t, nowMs) {
     const mood = el.dataset.mood || 'happy';
-    const P = { bx: 0, by: WK.stand, bz: 0, pitch: 0, roll: 0, feet: WK_HIPS.map(([x, z]) => [x * 1.15, 0, z * 1.2]), air: 0, lit: mood === 'wow' };
+    const P = { bx: 0, by: WK.stand, bz: 0, pitch: 0, roll: 0, feet: WK_HIPS.map(([x, z]) => [x * 1.7, 0, z * 1.75]), air: 0, lit: mood === 'wow' };
     const tt = t + st.phase;
     if (mood === 'thinking') {
       const f = 2.3;
@@ -231,11 +231,11 @@ html[data-look=plate] .pm-walker{--pm-wire:currentColor}
         const stance = ph < 0.5;
         const u = stance ? ph / 0.5 : (ph - 0.5) / 0.5;
         const dx = stance ? 0.1 - 0.2 * u : -0.1 + 0.2 * u;
-        return [x * 1.15 + dx, stance ? 0 : 0.15 * Math.sin(Math.PI * u), z * 1.2];
+        return [x * 1.7 + dx, stance ? 0 : 0.15 * Math.sin(Math.PI * u), z * 1.75];
       });
     } else if (mood === 'sleepy') {
-      P.by = 0.6 + 0.012 * Math.sin(tt * 0.9); // lies down: legs fold out to the sides
-      P.feet = WK_HIPS.map(([x, z]) => [x * 1.6, 0, z * 1.9]);
+      P.by = 0.62 + 0.012 * Math.sin(tt * 0.9); // lies down: legs fold out to the sides
+      P.feet = WK_HIPS.map(([x, z]) => [x * 2.4, 0, z * 2.4]);
     } else if (mood === 'sad') {
       P.by = WK.stand - 0.1;
       P.pitch = -0.14;
@@ -265,7 +265,7 @@ html[data-look=plate] .pm-walker{--pm-wire:currentColor}
           P.by = crouch + 0.1 * v + 0.6 * Math.sin(Math.PI * v);
           P.pitch = 0.22 * Math.sin(2 * Math.PI * v);
           P.air = Math.sin(Math.PI * v);
-          P.feet = WK_HIPS.map(([x, z, k]) => [x * 1.15 - k * 0.12 * Math.sin(Math.PI * v), 0, z * 1.2]); // stretch out in the air
+          P.feet = WK_HIPS.map(([x, z, k]) => [x * 1.7 - k * 0.12 * Math.sin(Math.PI * v), 0, z * 1.75]); // stretch out in the air
         } else P.by = WK.stand - 0.1 + 0.1 * ease((u - 0.7) / 0.3);
         P.lit = true;
       } else if (a.type === 'recover') {
@@ -277,7 +277,7 @@ html[data-look=plate] .pm-walker{--pm-wire:currentColor}
         P.feet = WK_HIPS.map(([x, z], i) => {
           const ph = frac(u * 6 + WK_TROT[i]);
           const lift = ph >= 0.5 ? 0.13 * fade * Math.sin(Math.PI * (ph - 0.5) * 2) : 0;
-          return [x * 1.15, lift, z * 1.2 + P.bz * 0.8];
+          return [x * 1.7, lift, z * 1.75 + P.bz * 0.8];
         });
         P.lit = true;
       }
@@ -298,9 +298,9 @@ html[data-look=plate] .pm-walker{--pm-wire:currentColor}
     // camera: a three-quarter view that sways gently, looking down a little
     const yaw = -0.75 + 0.38 * Math.sin((t + st.phase) * 0.22);
     const cy = Math.cos(yaw), sy = Math.sin(yaw), tilt = 0.34, ct = Math.cos(tilt), stl = Math.sin(tilt);
-    const S = 44;
+    const S = 40;
     const proj = ([x, y, z]) => {
-      const x1 = x * cy + z * sy, z1 = -x * sy + z * cy, y0 = y - 0.62;
+      const x1 = x * cy + z * sy, z1 = -x * sy + z * cy, y0 = y - 0.7;
       const y2 = y0 * ct - z1 * stl, z2 = y0 * stl + z1 * ct;
       return [x1 * S, -y2 * S, z2];
     };
@@ -314,16 +314,18 @@ html[data-look=plate] .pm-walker{--pm-wire:currentColor}
       ln.setAttribute('stroke-opacity', (shade(z) * opacity).toFixed(2));
       ln.setAttribute('stroke-width', (w0 + w1 * (z + 1) / 2).toFixed(2));
     };
-    // A leg segment as a wireframe capsule: two side lines joined by half circles at the ends.
-    const capsule = (path, a, b, r) => {
+    // A leg segment as a sharp wireframe taper: straight sides from width ra at a to rb at b (0 = a point).
+    const taper = (path, a, b, ra, rb) => {
       const dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy) || 1e-6;
-      const nx = (-dy / d) * r, ny = (dx / d) * r, z = (a[2] + b[2]) / 2;
+      const ux = -dy / d, uy = dx / d, z = (a[2] + b[2]) / 2;
       const f = (v) => v.toFixed(2);
-      path.setAttribute('d', `M${f(a[0] + nx)} ${f(a[1] + ny)}L${f(b[0] + nx)} ${f(b[1] + ny)}A${r} ${r} 0 0 0 ${f(b[0] - nx)} ${f(b[1] - ny)}L${f(a[0] - nx)} ${f(a[1] - ny)}A${r} ${r} 0 0 0 ${f(a[0] + nx)} ${f(a[1] + ny)}Z`);
+      path.setAttribute('d', rb > 0
+        ? `M${f(a[0] + ux * ra)} ${f(a[1] + uy * ra)}L${f(b[0] + ux * rb)} ${f(b[1] + uy * rb)}L${f(b[0] - ux * rb)} ${f(b[1] - uy * rb)}L${f(a[0] - ux * ra)} ${f(a[1] - uy * ra)}Z`
+        : `M${f(a[0] + ux * ra)} ${f(a[1] + uy * ra)}L${f(b[0])} ${f(b[1])}L${f(a[0] - ux * ra)} ${f(a[1] - uy * ra)}Z`);
       path.setAttribute('stroke-opacity', (shade(z) * dim).toFixed(2));
       path.setAttribute('stroke-width', (0.8 + 0.8 * (z + 1) / 2).toFixed(2));
     };
-    // legs first (behind the body's front edges): chubby two-link legs with round paws
+    // legs first (behind the body's front edges): two-link legs, thick at the hip and sharp at the tip
     WK_HIPS.forEach(([hx, hz, k], i) => {
       const H = body([hx, -0.3, hz]);
       let F = [P.feet[i][0] + P.bx, Math.max(P.feet[i][1], 0), P.feet[i][2]];
@@ -335,12 +337,8 @@ html[data-look=plate] .pm-walker{--pm-wire:currentColor}
       const ang = base + k * bend;
       const K = [H[0] + WK.L * Math.cos(ang), H[1] + WK.L * Math.sin(ang), (H[2] + F[2]) / 2];
       const pH = proj(H), pK = proj(K), pF = proj(F);
-      capsule(st.legs[i * 2], pH, pK, 4.6);
-      capsule(st.legs[i * 2 + 1], pK, pF, 4.3);
-      const paw = st.dots[12 + i];
-      paw.setAttribute('cx', pF[0].toFixed(2)); paw.setAttribute('cy', pF[1].toFixed(2));
-      paw.setAttribute('stroke-opacity', (shade(pF[2]) * dim).toFixed(2));
-      paw.setAttribute('stroke-width', (0.8 + 0.8 * (pF[2] + 1) / 2).toFixed(2));
+      taper(st.legs[i * 2], pH, pK, 4.2, 2.8); // thick thigh
+      taper(st.legs[i * 2 + 1], pK, pF, 2.8, 0); // shin tapering to a sharp point on the ground
     });
     // the icosahedron body, turning on its own like the plain one
     const spin = st.phase + t * (ICO_SPEED[mood] ?? 0.3);
@@ -374,9 +372,8 @@ html[data-look=plate] .pm-walker{--pm-wire:currentColor}
     shadow.setAttribute('class', 'pm-wk-shadow');
     g.appendChild(shadow);
     const legs = Array.from({ length: 8 }, () => { const pth = document.createElementNS(SVGNS, 'path'); pth.setAttribute('class', 'pm-wk-leg'); g.appendChild(pth); return pth; });
-    const paws = Array.from({ length: 4 }, () => { const c = document.createElementNS(SVGNS, 'circle'); c.setAttribute('r', '5.4'); c.setAttribute('class', 'pm-wk-paw'); g.appendChild(c); return c; });
     const lines = ICO_E.map(() => { const l = document.createElementNS(SVGNS, 'line'); g.appendChild(l); return l; });
-    const dots = [...ICO_V.map(() => { const c = document.createElementNS(SVGNS, 'circle'); g.appendChild(c); return c; }), ...paws];
+    const dots = ICO_V.map(() => { const c = document.createElementNS(SVGNS, 'circle'); g.appendChild(c); return c; });
     svgEl.appendChild(g);
     const move = document.createElement('span');
     move.className = 'pm-move';
