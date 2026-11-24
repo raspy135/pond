@@ -369,9 +369,10 @@ async function handleNotificationJump(data) {
   const meta = data.meta || {};
   const emailId = meta.emailId || data.emailId;
   closeAllDrawers();
-  if (emailId) openEmailView(emailId);
-  else if (data.category === 'approval') renderSentinelBanner();
+  // the chat message comes first (it has a "New chat" button to follow up); the email pop-up only when there is none
+  if (data.category === 'approval') renderSentinelBanner();
   else if (data.sessionId) openChatAt(data.sessionId, data.messageTs || null).catch(() => {});
+  else if (emailId) openEmailView(emailId);
   else if (data.category === 'email') openDrawer('emailDrawer');
   else openDrawer('notifDrawer');
   if (data.id) {
