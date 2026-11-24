@@ -12,6 +12,14 @@ html[data-look=plate] .pm-icosa{--pm-wire:currentColor}
 .pm-icosa circle{fill:var(--pm-wire)}
 .pm-icosa circle.pm-ico-lit{fill:var(--pm-stain,#e8749f)}
 .pm-icosa .pm-move{transform-origin:50% 50%}
+.pm-walker{color:inherit;--pm-wire:var(--pm-body)}
+html[data-look=plate] .pm-walker{--pm-wire:currentColor}
+.pm-walker line{stroke:var(--pm-wire);vector-effect:non-scaling-stroke;stroke-linecap:round}
+.pm-walker circle{fill:var(--pm-wire)}
+.pm-walker .pm-wk-eye{fill:var(--pm-stain,#e8749f)}
+.pm-walker .pm-wk-shadow{fill:var(--pm-wire);opacity:.13}
+.pm-walker .pm-move{transform-origin:50% 70%}
+.pond-mascot.pm-walker.pm-working svg{animation:none}
 :root{--pm-body:#22c3e6;--pm-stem:#1aa6c8;--pm-tip:#ffd166;--pm-drop:#5fd8f0;--pm-on:#0f172a}
 .pond-mascot{display:inline-block;width:100%;height:100%;line-height:0}
 .pond-mascot svg{width:100%;height:100%;overflow:visible}
@@ -190,11 +198,208 @@ html[data-look=plate] .pm-icosa{--pm-wire:currentColor}
   function icoLoop(now) {
     icoRaf = 0;
     const t = (now - icoStart) / 1000;
-    const live = document.querySelectorAll('.pm-icosa.pm-alive, .pm-icosa.pm-working, .pm-icosa.pm-preview');
-    live.forEach((el) => icoDraw(el, t));
+    const live = document.querySelectorAll(':is(.pm-icosa, .pm-walker):is(.pm-alive, .pm-working, .pm-preview)');
+    live.forEach((el) => (el.classList.contains('pm-walker') ? walkerDraw(el, t, now) : icoDraw(el, t)));
     if (live.length && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) icoRaf = requestAnimationFrame(icoLoop);
   }
   const icoKick = () => { if (!icoRaf) icoRaf = requestAnimationFrame(icoLoop); };
+
+  // ---------- Walker character: a small wireframe robot quadruped, drawn in 3D and turning gently. Its moves borrow
+  // from legged robots like BigDog: a diagonal trot while working, a crouch-and-launch jump, and the shove-and-recover
+  // scramble (feet stepping quickly to catch the body after a sideways push). ----------
+  const walkerState = new WeakMap();
+  const WK = { L: 0.52, len: 1.12, h: 0.44, w: 0.6, stand: 0.9 };
+  // hips: [x, z, knee direction] in body coordinates (FL, FR, HL, HR). Knees point toward the middle, like BigDog's.
+  const WK_HIPS = [[0.46, 0.27, -1], [0.46, -0.27, -1], [-0.46, 0.27, 1], [-0.46, -0.27, 1]];
+  const WK_TROT = [0, 0.5, 0.5, 0]; // diagonal pairs move together
+  const WK_SPEED = { thinking: 2.3 };
+  function boxEdges([cx, cy, cz], [sx, sy, sz]) {
+    const v = [];
+    for (const dx of [-1, 1]) for (const dy of [-1, 1]) for (const dz of [-1, 1]) v.push([cx + (dx * sx) / 2, cy + (dy * sy) / 2, cz + (dz * sz) / 2]);
+    const e = [];
+    for (let i = 0; i < 8; i++) for (let j = i + 1; j < 8; j++) { const x = i ^ j; if (x === 1 || x === 2 || x === 4) e.push([v[i], v[j]]); }
+    return e;
+  }
+  const WK_BODY = boxEdges([0, 0, 0], [WK.len, WK.h, WK.w]);
+  const WK_NECK = [WK.len / 2, 0.1, 0];
+  const WK_HEAD = boxEdges([0.2, 0.1, 0], [0.4, 0.34, 0.44]); // relative to the neck pivot (a big head reads cuter)
+  const WK_EYE = [0.405, 0.12, 0];
+  const frac = (x) => x - Math.floor(x);
+  const ease = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
+
+  // The pose for this moment: body position/attitude, head, feet on (or off) the ground, eye.
+  function walkerPose(el, st, t, nowMs) {
+    const mood = el.dataset.mood || 'happy';
+    const P = { bx: 0, by: WK.stand, bz: 0, pitch: 0, roll: 0, hy: 0, hp: 0, feet: WK_HIPS.map(([x, z]) => [x, 0, z * 1.08]), eye: 'open', air: 0 };
+    const tt = t + st.phase;
+    if (mood === 'thinking') {
+      const f = WK_SPEED.thinking;
+      P.by = WK.stand - 0.03 + 0.025 * Math.cos(4 * Math.PI * f * tt);
+      P.pitch = 0.025 * Math.sin(2 * Math.PI * f * tt);
+      P.hy = 0.35 * Math.sin(tt * 2.1);
+      P.feet = WK_HIPS.map(([x, z], i) => {
+        const ph = frac(f * tt + WK_TROT[i]);
+        const stance = ph < 0.5;
+        const u = stance ? ph / 0.5 : (ph - 0.5) / 0.5;
+        const dx = stance ? 0.11 - 0.22 * u : -0.11 + 0.22 * u;
+        return [x + dx, stance ? 0 : 0.14 * Math.sin(Math.PI * u), z * 1.08];
+      });
+    } else if (mood === 'sleepy') {
+      P.by = 0.4 + 0.012 * Math.sin(tt * 0.9);
+      P.hp = -0.38;
+      P.feet = WK_HIPS.map(([x, z, k]) => [x - k * 0.2, 0, z * 1.15]);
+      P.eye = 'closed';
+    } else if (mood === 'sad') {
+      P.by = WK.stand - 0.08;
+      P.pitch = -0.1;
+      P.hp = -0.32;
+      P.hy = 0.12 * Math.sin(tt * 0.4);
+      P.eye = 'half';
+    } else {
+      // idle: shift weight, look around, take a single step now and then
+      P.by = WK.stand + 0.012 * Math.sin(tt * 1.6);
+      P.roll = 0.045 * Math.sin(tt * 0.8);
+      P.bz = 0.035 * Math.sin(tt * 0.8);
+      P.pitch = 0.02 * Math.sin(tt * 1.1);
+      P.hy = 0.3 * Math.sin(tt * 0.45);
+      P.hp = 0.06 * Math.sin(tt * 0.7);
+      if (mood === 'wow') P.eye = 'big';
+      const cycle = 3.6;
+      const k = Math.floor(tt / cycle), u = (tt - k * cycle) / 0.45;
+      if (u < 1) {
+        const leg = k % 4;
+        P.feet[leg] = [P.feet[leg][0] + 0.05 * Math.sin(Math.PI * u), 0.12 * Math.sin(Math.PI * u), P.feet[leg][2]];
+      }
+    }
+    // one-off moves (PondMascot.act)
+    const a = st.action;
+    if (a) {
+      const u = (nowMs - a.t0) / a.dur;
+      if (u >= 1) st.action = null;
+      else if (a.type === 'jump') {
+        const crouch = WK.stand - 0.2;
+        if (u < 0.22) P.by = WK.stand - 0.2 * ease(u / 0.22);
+        else if (u < 0.7) {
+          const v = (u - 0.22) / 0.48;
+          P.by = crouch + 0.1 * v + 0.62 * Math.sin(Math.PI * v);
+          P.pitch = 0.22 * Math.sin(2 * Math.PI * v);
+          P.air = Math.sin(Math.PI * v);
+          P.feet = WK_HIPS.map(([x, z, k]) => [x - k * 0.14 * Math.sin(Math.PI * v), 0, z * 1.08]); // stretch out in the air
+        } else P.by = WK.stand - 0.1 + 0.1 * ease((u - 0.7) / 0.3);
+        P.eye = 'big';
+      } else if (a.type === 'recover') {
+        // shoved sideways: the body swings out and back while the feet scramble to stay under it
+        const push = u < 0.16 ? Math.sin((u / 0.16) * Math.PI / 2) : Math.exp(-3.2 * (u - 0.16)) * Math.cos((u - 0.16) * 7);
+        P.bz = 0.26 * push;
+        P.roll = -0.35 * push;
+        P.hy = 0.5 * push;
+        const fade = Math.max(0, 1 - u * 1.3);
+        P.feet = WK_HIPS.map(([x, z], i) => {
+          const ph = frac(u * 6 + WK_TROT[i]);
+          const lift = ph >= 0.5 ? 0.12 * fade * Math.sin(Math.PI * (ph - 0.5) * 2) : 0;
+          return [x, lift, z * 1.08 + P.bz * 0.8];
+        });
+        P.eye = 'big';
+      }
+    }
+    return P;
+  }
+
+  function walkerDraw(el, t, nowMs = performance.now()) {
+    const st = walkerState.get(el);
+    if (!st) return;
+    const P = walkerPose(el, st, t, nowMs);
+    const cp = Math.cos(P.pitch), sp = Math.sin(P.pitch), cr = Math.cos(P.roll), sr = Math.sin(P.roll);
+    const body = ([x, y, z]) => { // body → world
+      const y1 = y * cr - z * sr, z1 = y * sr + z * cr;
+      return [x * cp - y1 * sp + P.bx, x * sp + y1 * cp + P.by, z1 + P.bz];
+    };
+    const chy = Math.cos(P.hy), shy = Math.sin(P.hy), chp = Math.cos(P.hp), shp = Math.sin(P.hp);
+    const head = ([x, y, z]) => { // head → body (pitch, then yaw about the neck)
+      const x1 = x * chp - y * shp, y1 = x * shp + y * chp;
+      return body([WK_NECK[0] + x1 * chy - z * shy, WK_NECK[1] + y1, WK_NECK[2] + x1 * shy + z * chy]);
+    };
+    // camera: a three-quarter view that sways gently, looking down a little
+    const yaw = -0.75 + 0.38 * Math.sin((t + st.phase) * 0.22);
+    const cy = Math.cos(yaw), sy = Math.sin(yaw), tilt = 0.34, ct = Math.cos(tilt), stl = Math.sin(tilt);
+    const S = 41;
+    const proj = ([x, y, z]) => {
+      const x1 = x * cy + z * sy, z1 = -x * sy + z * cy, y0 = y - 0.55;
+      const y2 = y0 * ct - z1 * stl, z2 = y0 * stl + z1 * ct;
+      return [x1 * S, -y2 * S, z2];
+    };
+    const shade = (z) => Math.max(0.25, Math.min(1, 0.6 + 0.4 * z));
+    let li = 0;
+    const seg = (a, b, w0 = 0.7, w1 = 0.9) => {
+      const pa = proj(a), pb = proj(b), ln = st.lines[li++], z = (pa[2] + pb[2]) / 2;
+      ln.setAttribute('x1', pa[0].toFixed(2)); ln.setAttribute('y1', pa[1].toFixed(2));
+      ln.setAttribute('x2', pb[0].toFixed(2)); ln.setAttribute('y2', pb[1].toFixed(2));
+      ln.setAttribute('stroke-opacity', shade(z).toFixed(2));
+      ln.setAttribute('stroke-width', (w0 + w1 * (z + 1) / 2).toFixed(2));
+    };
+    for (const [a, b] of WK_BODY) seg(body(a), body(b));
+    for (const [a, b] of WK_HEAD) seg(head(a), head(b));
+    // legs: two-link IK in the leg's vertical plane
+    WK_HIPS.forEach(([hx, hz, k], i) => {
+      const H = body([hx, -WK.h / 2, hz]);
+      let F = [P.feet[i][0] + P.bx, Math.max(P.feet[i][1], 0), P.feet[i][2]];
+      let dx = F[0] - H[0], dy = F[1] - H[1];
+      let d = Math.hypot(dx, dy);
+      const reach = 2 * WK.L * 0.995;
+      if (d > reach) { F = [H[0] + (dx / d) * reach, H[1] + (dy / d) * reach, F[2]]; dx = F[0] - H[0]; dy = F[1] - H[1]; d = reach; }
+      const base = Math.atan2(dy, dx), bend = Math.acos(Math.min(1, Math.max(d, 0.05) / (2 * WK.L)));
+      const ang = base + k * bend;
+      const K = [H[0] + WK.L * Math.cos(ang), H[1] + WK.L * Math.sin(ang), (H[2] + F[2]) / 2];
+      seg(H, K, 1.1, 1.0);
+      seg(K, F, 1.1, 1.0);
+      const pk = proj(K), pf = proj(F);
+      st.dots[i].setAttribute('cx', pk[0].toFixed(2)); st.dots[i].setAttribute('cy', pk[1].toFixed(2));
+      st.dots[i + 4].setAttribute('cx', pf[0].toFixed(2)); st.dots[i + 4].setAttribute('cy', pf[1].toFixed(2));
+      st.dots[i].setAttribute('fill-opacity', shade(pk[2]).toFixed(2));
+      st.dots[i + 4].setAttribute('fill-opacity', shade(pf[2]).toFixed(2));
+    });
+    // eye on the face (hidden when the head turns away)
+    const pe = proj(head(WK_EYE)), pc = proj(head([0.2, 0.1, 0]));
+    const facing = pe[2] > pc[2] - 0.02;
+    const ry = P.eye === 'closed' ? 0.6 : P.eye === 'half' ? 1.7 : P.eye === 'big' ? 4.3 : 3.3;
+    st.eye.setAttribute('cx', pe[0].toFixed(2)); st.eye.setAttribute('cy', pe[1].toFixed(2));
+    st.eye.setAttribute('rx', (P.eye === 'big' ? 4.3 : 3.3).toFixed(2)); st.eye.setAttribute('ry', ry.toFixed(2));
+    st.eye.setAttribute('fill-opacity', facing ? '1' : '0');
+    // shadow on the ground (smaller while airborne)
+    const g = proj([P.bx, 0, P.bz]);
+    st.shadow.setAttribute('cx', g[0].toFixed(2)); st.shadow.setAttribute('cy', g[1].toFixed(2));
+    st.shadow.setAttribute('rx', (32 * (1 - 0.35 * P.air)).toFixed(2)); st.shadow.setAttribute('ry', (32 * stl * 0.75 * (1 - 0.35 * P.air)).toFixed(2));
+  }
+
+  function createWalker(mood = 'happy') {
+    injectCss();
+    const el = document.createElement('span');
+    el.className = 'pond-mascot pm-walker';
+    el.dataset.mood = MOODS.includes(mood) ? mood : 'happy';
+    const svgEl = document.createElementNS(SVGNS, 'svg');
+    svgEl.setAttribute('viewBox', '-50 -50 100 100');
+    svgEl.setAttribute('aria-hidden', 'true');
+    const g = document.createElementNS(SVGNS, 'g');
+    const shadow = document.createElementNS(SVGNS, 'ellipse');
+    shadow.setAttribute('class', 'pm-wk-shadow');
+    g.appendChild(shadow);
+    const lines = Array.from({ length: WK_BODY.length + WK_HEAD.length + 8 }, () => { const l = document.createElementNS(SVGNS, 'line'); g.appendChild(l); return l; });
+    const dots = Array.from({ length: 8 }, (_, i) => { const c = document.createElementNS(SVGNS, 'circle'); c.setAttribute('r', i < 4 ? '1.9' : '2.3'); g.appendChild(c); return c; });
+    const eye = document.createElementNS(SVGNS, 'ellipse');
+    eye.setAttribute('class', 'pm-wk-eye');
+    g.appendChild(eye);
+    svgEl.appendChild(g);
+    const move = document.createElement('span');
+    move.className = 'pm-move';
+    move.appendChild(svgEl);
+    el.appendChild(move);
+    walkerState.set(el, { lines, dots, eye, shadow, phase: Math.random() * 20, action: null });
+    walkerDraw(el, 0); // a still pose for history avatars; live ones move
+    if (el.dataset.mood === 'thinking') el.classList.add('pm-working');
+    new MutationObserver(icoKick).observe(el, { attributes: true, attributeFilter: ['class', 'data-mood'] });
+    icoKick();
+    return el;
+  }
   function createIcosa(mood = 'happy') {
     injectCss();
     const el = document.createElement('span');
@@ -248,6 +453,12 @@ html[data-look=plate] .pm-icosa{--pm-wire:currentColor}
   function act(el, move) {
     if (!el || el.classList.contains('pm-working') || el.dataset.acting) return;
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    if (el.classList.contains('pm-walker')) { // its own moves: a real jump, or the shove-and-recover scramble
+      const st = walkerState.get(el);
+      if (st && !st.action) st.action = move === 'spin' ? { type: 'recover', t0: performance.now(), dur: 1500 } : { type: 'jump', t0: performance.now(), dur: 1000 };
+      icoKick();
+      return;
+    }
     if (move === 'spin' && (el.classList.contains('pm-image') || el.classList.contains('pm-icosa'))) move = 'jump'; // the ball-turn needs the mascot's face layers
     const cls = move === 'spin' ? 'pm-spin' : 'pm-jump';
     el.dataset.acting = '1';
@@ -315,5 +526,5 @@ html[data-look=plate] .pm-icosa{--pm-wire:currentColor}
     return p;
   }
 
-  window.PondMascot = { create, createImage, createIcosa, setMood, act, setPalette, resolvePalette, PALETTES, MOODS };
+  window.PondMascot = { create, createImage, createIcosa, createWalker, setMood, act, setPalette, resolvePalette, PALETTES, MOODS };
 })();
