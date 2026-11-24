@@ -31,8 +31,10 @@ function cronLabel(expr) {
 // Scrolling up (to re-read while Pond is thinking or writing) stops the auto-follow; the ↓ button
 // or scrolling back down resumes it.
 let stickToBottom = true;
+let redrawingChat = false; // loadConversation is rebuilding the chat: it scrolls once at the end
 function scrollToLatest(force = false) {
-  if (force) stickToBottom = true;
+  if (scrollHold && !force) return; // showing a message the user jumped to
+  if (force) { stickToBottom = true; stopScrollHold(); }
   if (stickToBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
   updateJumpBtn();
 }
@@ -696,7 +698,7 @@ function addMessage(role, text, { proactive = false, tag = '' } = {}) {
 
   row.appendChild(col);
   messagesEl.appendChild(row);
-  scrollToLatest(role === 'user'); // your own message always brings you to the bottom
+  if (!redrawingChat) scrollToLatest(role === 'user'); // your own message always brings you to the bottom
   return body;
 }
 
@@ -1389,17 +1391,45 @@ function renderSearchResults(data) {
   if (!data.chats?.length && !data.emails?.length && !data.notifications?.length) box.innerHTML = '<div class="empty">Nothing found</div>';
 }
 // Open a chat and bring a message into view.
+// The message's top is placed near the top of the chat, and kept there for a few seconds while the page settles
+// (pictures and page previews size themselves after the chat is drawn, and a sync can redraw it), until the user
+// scrolls themselves.
+let scrollHold = null;
+function stopScrollHold() {
+  if (!scrollHold) return;
+  cancelAnimationFrame(scrollHold.raf);
+  for (const ev of ['wheel', 'touchstart', 'pointerdown', 'keydown']) messagesEl.removeEventListener(ev, stopScrollHold);
+  scrollHold = null;
+}
+function holdScrollAt(ts, ms = 3000) {
+  stopScrollHold();
+  const hold = { ts, until: performance.now() + ms, raf: 0, flashed: null };
+  scrollHold = hold;
+  for (const ev of ['wheel', 'touchstart', 'pointerdown', 'keydown']) messagesEl.addEventListener(ev, stopScrollHold, { passive: true });
+  const step = () => {
+    if (scrollHold !== hold) return;
+    const row = [...messagesEl.querySelectorAll('.msg-row[data-ts]')].find((r) => r.dataset.ts === ts);
+    if (row) {
+      const off = row.getBoundingClientRect().top - messagesEl.getBoundingClientRect().top - 12;
+      if (Math.abs(off) > 1) messagesEl.scrollTop += off; // stops at the bottom if the message is the last one
+      stickToBottom = false;
+      if (hold.flashed !== row) { // flash it (again, if the chat was redrawn)
+        hold.flashed = row;
+        row.classList.remove('search-flash');
+        void row.offsetWidth;
+        row.classList.add('search-flash');
+        clearTimeout(row._flashTimer);
+        row._flashTimer = setTimeout(() => row.classList.remove('search-flash'), 2400);
+      }
+    }
+    if (performance.now() < hold.until) hold.raf = requestAnimationFrame(step);
+    else { stopScrollHold(); messagesEl.dispatchEvent(new Event('scroll')); }
+  };
+  step();
+}
 async function openChatAt(sessionId, ts) {
   if (sessionId !== currentSessionId) await switchSession(sessionId);
-  if (!ts) return;
-  const row = [...messagesEl.querySelectorAll('.msg-row[data-ts]')].find((r) => r.dataset.ts === ts);
-  if (!row) return;
-  row.scrollIntoView({ block: 'center' });
-  row.classList.remove('search-flash');
-  void row.offsetWidth;
-  row.classList.add('search-flash');
-  clearTimeout(row._flashTimer);
-  row._flashTimer = setTimeout(() => row.classList.remove('search-flash'), 2400);
+  if (ts) holdScrollAt(ts);
 }
 async function openEmailView(id) {
   const r = await fetch(`/api/emails/${encodeURIComponent(id)}`).then((x) => x.json()).catch(() => ({ error: 'network error' }));
@@ -2840,6 +2870,8 @@ async function loadConversation({ force = true, silent = false } = {}) {
     lastRenderedSessionKey = key;
     history = [];
     messagesEl.innerHTML = '';
+    redrawingChat = true;
+    try {
     for (const m of data.messages || []) {
       if (m.role === 'tool') {
         let parsedRes = m.content;
@@ -2884,9 +2916,10 @@ async function loadConversation({ force = true, silent = false } = {}) {
         if (m.cancelled) markStopped(body);
       }
     }
+    } finally { redrawingChat = false; }
     renderedConv = { sessionId: data.sessionId || null, count: (data.messages || []).length, liveTail: false, expectUser: false, liveBody: null, finishedAt: 0 };
     if (!(data.messages || []).length && !data.activeTurn) showGreeting();
-    if (force || wasNearBottom) scrollToLatest(true); else updateJumpBtn();
+    if (scrollHold) { /* keeps showing the message the user jumped to */ } else if (force || wasNearBottom) scrollToLatest(true); else updateJumpBtn();
     if (data.activeTurn) attachToTurn(data.activeTurn); // reply still running (switched back / reopened / other device)
     return true;
   } catch (err) {
