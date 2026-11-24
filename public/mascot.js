@@ -12,17 +12,6 @@ html[data-look=plate] .pm-icosa{--pm-wire:currentColor}
 .pm-icosa circle{fill:var(--pm-wire)}
 .pm-icosa circle.pm-ico-lit{fill:var(--pm-stain,#e8749f)}
 .pm-icosa .pm-move{transform-origin:50% 50%}
-.pm-walker{color:inherit;--pm-wire:var(--pm-body)}
-html[data-look=plate] .pm-walker{--pm-wire:currentColor}
-.pm-walker line{stroke:var(--pm-wire);vector-effect:non-scaling-stroke;stroke-linecap:round}
-.pm-walker circle{fill:var(--pm-wire)}
-.pm-walker circle.pm-ico-lit{fill:var(--pm-stain,#e8749f)}
-.pm-walker path.pm-wk-leg{fill:none;stroke:var(--pm-wire);vector-effect:non-scaling-stroke;stroke-linejoin:miter}
-.pm-walker{--pm-face:var(--panel,#f7f7f7)}
-.pm-walker polygon.pm-wk-face{stroke:none}
-.pm-walker .pm-wk-shadow{fill:var(--pm-wire);opacity:.13}
-.pm-walker .pm-move{transform-origin:50% 70%}
-.pond-mascot.pm-walker.pm-working svg{animation:none}
 :root{--pm-body:#22c3e6;--pm-stem:#1aa6c8;--pm-tip:#ffd166;--pm-drop:#5fd8f0;--pm-on:#0f172a}
 .pond-mascot{display:inline-block;width:100%;height:100%;line-height:0}
 .pond-mascot svg{width:100%;height:100%;overflow:visible}
@@ -201,261 +190,11 @@ html[data-look=plate] .pm-walker{--pm-wire:currentColor}
   function icoLoop(now) {
     icoRaf = 0;
     const t = (now - icoStart) / 1000;
-    const live = document.querySelectorAll(':is(.pm-icosa, .pm-walker):is(.pm-alive, .pm-working, .pm-preview)');
-    live.forEach((el) => (el.classList.contains('pm-walker') ? walkerDraw(el, t, now) : icoDraw(el, t)));
+    const live = document.querySelectorAll('.pm-icosa.pm-alive, .pm-icosa.pm-working, .pm-icosa.pm-preview');
+    live.forEach((el) => icoDraw(el, t));
     if (live.length && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) icoRaf = requestAnimationFrame(icoLoop);
   }
   const icoKick = () => { if (!icoRaf) icoRaf = requestAnimationFrame(icoLoop); };
-
-  // ---------- Walker character: the wireframe icosahedron on four sharp, pointed legs, each joined to one of its four
-  // lowest vertices and bending up and out like an insect's. Moves borrow from legged robots like BigDog: a trot while
-  // working, a crouch-and-launch jump, and the shove-and-recover scramble (feet stepping fast to catch the body). ----------
-  const walkerState = new WeakMap();
-  const WK = { L: 0.5, R: 0.55, stand: 1.0, spread: 0.92 };
-  // the four lowest vertices are the hips (front, side, side, back in some order); their horizontal direction is where
-  // each leg reaches out to
-  const WK_HIPV = ICO_V.map((v, i) => [v, i]).sort((a, b) => a[0][1] - b[0][1]).slice(0, 4).map(([v, i]) => {
-    const h = Math.hypot(v[0], v[2]) || 1;
-    return { i, v, dir: [v[0] / h, v[2] / h] };
-  });
-  // trot pairs: opposite legs move together
-  const WK_TROT = WK_HIPV.map((h) => (Math.abs(h.dir[0]) > Math.abs(h.dir[1]) ? 0 : 0.5));
-  const WK_EYE = ICO_V.reduce((best, v, i) => (v[1] > 0.3 && v[0] > (ICO_V[best]?.[0] ?? -9) ? i : best), 0); // top-front vertex lights up on news
-  const ICO_F = [];
-  {
-    const adj = new Set(ICO_E.map(([a, b]) => `${Math.min(a, b)}-${Math.max(a, b)}`));
-    const has = (a, b) => adj.has(`${Math.min(a, b)}-${Math.max(a, b)}`);
-    for (let a = 0; a < 12; a++) for (let b = a + 1; b < 12; b++) for (let c = b + 1; c < 12; c++) if (has(a, b) && has(b, c) && has(a, c)) ICO_F.push([a, b, c]);
-  }
-  const ICO_EF = ICO_E.map(([a, b]) => ICO_F.map((f, k) => (f.includes(a) && f.includes(b) ? k : -1)).filter((k) => k >= 0));
-  const frac = (x) => x - Math.floor(x);
-  const ease = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
-
-  // The pose for this moment: body position/attitude, and each foot as [radial reach, lift, sideways shift].
-  function walkerPose(el, st, t, nowMs) {
-    const mood = el.dataset.mood || 'happy';
-    const P = { sq: 1, bx: 0, by: WK.stand, bz: 0, pitch: 0, roll: 0, yaw: 0, feet: WK_HIPV.map(() => [WK.spread, 0, 0]), air: 0, lit: mood === 'wow' };
-    const tt = t + st.phase;
-    if (mood === 'thinking') {
-      const f = 2.3;
-      P.by = WK.stand - 0.03 + 0.03 * Math.cos(4 * Math.PI * f * tt);
-      P.sq = 1 + 0.05 * Math.cos(4 * Math.PI * f * tt); // flattens a little on every footfall
-      P.yaw = 0.08 * Math.sin(2 * Math.PI * f * tt);
-      P.roll = 0.03 * Math.sin(2 * Math.PI * f * tt + 1);
-      P.feet = WK_HIPV.map((_, i) => {
-        const ph = frac(f * tt + WK_TROT[i]);
-        const swing = ph >= 0.5;
-        const u = swing ? (ph - 0.5) / 0.5 : ph / 0.5;
-        return [WK.spread + (swing ? -0.06 * Math.sin(Math.PI * u) : 0), swing ? 0.16 * Math.sin(Math.PI * u) : 0, 0];
-      });
-    } else if (mood === 'sleepy') {
-      P.by = 0.56 + 0.012 * Math.sin(tt * 0.9); // lies down: legs splay out
-      P.sq = 0.9 + 0.03 * Math.sin(tt * 0.9); // slow, deep breaths
-      P.feet = WK_HIPV.map(() => [WK.spread + 0.28, 0, 0]);
-    } else if (mood === 'sad') {
-      P.by = WK.stand - 0.12;
-      P.pitch = -0.14;
-      P.sq = 0.93 + 0.015 * Math.sin(tt * 1.2); // droops
-      P.feet = WK_HIPV.map(() => [WK.spread + 0.06, 0, 0]);
-    } else {
-      // idle: shift weight, sway, and lift a foot now and then
-      // breathing, plus a happy little knee-bob every few seconds (the jelly body jiggles after it)
-      const bob = frac(tt / 2.6), dip = bob < 0.22 ? Math.sin((Math.PI * bob) / 0.22) : 0;
-      P.by = WK.stand + 0.015 * Math.sin(tt * 1.6) - 0.08 * dip;
-      P.sq = 1 + 0.035 * Math.sin(tt * 1.85) - 0.1 * dip;
-      P.roll = 0.05 * Math.sin(tt * 0.8);
-      P.bz = 0.035 * Math.sin(tt * 0.8);
-      P.pitch = 0.03 * Math.sin(tt * 1.1);
-      P.yaw = 0.12 * Math.sin(tt * 0.37);
-      const cycle = 3.6;
-      const k = Math.floor(tt / cycle), u = (tt - k * cycle) / 0.45;
-      if (u < 1) P.feet[k % 4] = [WK.spread - 0.05 * Math.sin(Math.PI * u), 0.14 * Math.sin(Math.PI * u), 0];
-    }
-    // one-off moves (PondMascot.act)
-    const a = st.action;
-    if (a) {
-      const u = (nowMs - a.t0) / a.dur;
-      if (u >= 1) st.action = null;
-      else if (a.type === 'jump') {
-        const crouch = WK.stand - 0.22;
-        if (u < 0.22) { P.by = WK.stand - 0.22 * ease(u / 0.22); P.sq = 1 - 0.2 * ease(u / 0.22); }
-        else if (u < 0.7) {
-          const v = (u - 0.22) / 0.48;
-          P.by = crouch + 0.12 * v + 0.6 * Math.sin(Math.PI * v);
-          P.sq = 1 + 0.18 * Math.sin(Math.PI * Math.min(1, v * 1.6)) * (1 - v); // stretches as it launches
-          P.pitch = 0.2 * Math.sin(2 * Math.PI * v);
-          P.air = Math.sin(Math.PI * v);
-          P.feet = WK_HIPV.map(() => [WK.spread - 0.12 * Math.sin(Math.PI * v), 0, 0]); // legs draw in while airborne
-        } else { const w = (u - 0.7) / 0.3; P.by = WK.stand - 0.1 + 0.1 * ease(w); P.sq = 1 - 0.22 * (1 - ease(w)); } // lands flat, springs back
-        P.lit = true;
-      } else if (a.type === 'recover') {
-        // shoved sideways: the body swings out and back while the feet scramble to stay under it
-        const push = u < 0.16 ? Math.sin((u / 0.16) * Math.PI / 2) : Math.exp(-3.2 * (u - 0.16)) * Math.cos((u - 0.16) * 7);
-        P.bz = 0.26 * push;
-        P.roll = -0.35 * push;
-        P.sq = 1 - 0.1 * Math.abs(push);
-        const fade = Math.max(0, 1 - u * 1.3);
-        P.feet = WK_HIPV.map((_, i) => {
-          const ph = frac(u * 6 + WK_TROT[i]);
-          return [WK.spread, ph >= 0.5 ? 0.13 * fade * Math.sin(Math.PI * (ph - 0.5) * 2) : 0, P.bz * 0.8];
-        });
-        P.lit = true;
-      }
-    }
-    return P;
-  }
-
-  function walkerDraw(el, t, nowMs = performance.now()) {
-    const st = walkerState.get(el);
-    if (!st) return;
-    const mood = el.dataset.mood || 'happy';
-    const P = walkerPose(el, st, t, nowMs);
-    // Jelly: the body's squash-and-stretch follows the pose, plus a springy wobble kicked by how hard the body speeds
-    // up or slows down vertically (a landing squashes it, then it jiggles back).
-    const dt = st.lastMs ? Math.min(0.05, Math.max(0, (nowMs - st.lastMs) / 1000)) : 0;
-    st.lastMs = nowMs;
-    if (dt > 0) {
-      const vy = (P.by - (st.prevBy ?? P.by)) / dt;
-      const ay = Math.max(-60, Math.min(60, (vy - (st.prevVy ?? vy)) / dt));
-      st.prevVy = vy;
-      st.jv = (st.jv || 0) + (-520 * (st.j || 0) - 11 * (st.jv || 0) - 1.1 * ay) * dt;
-      st.j = Math.max(-0.2, Math.min(0.2, (st.j || 0) + st.jv * dt));
-    }
-    st.prevBy = P.by;
-    const sq = Math.max(0.7, Math.min(1.3, P.sq + (st.j || 0)));
-    const wsq = 1 / Math.sqrt(sq); // keeps the volume: flatter is wider
-    const SQ0 = -1.3; // squash about the hips, so the legs stay planted
-    const cp = Math.cos(P.pitch), sp = Math.sin(P.pitch), cr = Math.cos(P.roll), sr = Math.sin(P.roll), cw = Math.cos(P.yaw), sw = Math.sin(P.yaw);
-    const body = ([x, y, z]) => { // body → world: yaw, roll, pitch, then position
-      const x0 = x * cw + z * sw, z0 = -x * sw + z * cw;
-      const y1 = y * cr - z0 * sr, z1 = y * sr + z0 * cr;
-      return [x0 * cp - y1 * sp + P.bx, x0 * sp + y1 * cp + P.by, z1 + P.bz];
-    };
-    // camera: a three-quarter view that sways gently, looking down a little
-    const yaw = -0.75 + 0.45 * Math.sin((t + st.phase) * 0.22);
-    const cy = Math.cos(yaw), sy = Math.sin(yaw), tilt = 0.34, ct = Math.cos(tilt), stl = Math.sin(tilt);
-    const S = 37;
-    const proj = ([x, y, z]) => {
-      const x1 = x * cy + z * sy, z1 = -x * sy + z * cy, y0 = y - 0.66;
-      const y2 = y0 * ct - z1 * stl, z2 = y0 * stl + z1 * ct;
-      return [x1 * S, -y2 * S, z2];
-    };
-    const shade = (z) => Math.max(0.25, Math.min(1, 0.6 + 0.45 * z));
-    const dim = mood === 'sleepy' ? 0.55 : 1;
-    // A leg segment as a sharp wireframe taper: straight sides from width ra at a to rb at b (0 = a point).
-    const taper = (path, a, b, ra, rb) => {
-      const dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy) || 1e-6;
-      const ux = -dy / d, uy = dx / d, z = (a[2] + b[2]) / 2;
-      const f = (v) => v.toFixed(2);
-      path.setAttribute('d', rb > 0
-        ? `M${f(a[0] + ux * ra)} ${f(a[1] + uy * ra)}L${f(b[0] + ux * rb)} ${f(b[1] + uy * rb)}L${f(b[0] - ux * rb)} ${f(b[1] - uy * rb)}L${f(a[0] - ux * ra)} ${f(a[1] - uy * ra)}Z`
-        : `M${f(a[0] + ux * ra)} ${f(a[1] + uy * ra)}L${f(b[0])} ${f(b[1])}L${f(a[0] - ux * ra)} ${f(a[1] - uy * ra)}Z`);
-      path.setAttribute('stroke-opacity', (shade(z) * dim).toFixed(2));
-      path.setAttribute('stroke-width', (0.8 + 0.8 * (z + 1) / 2).toFixed(2));
-    };
-    // the icosahedron body (no spin of its own: the legs are joined to its vertices). It is solid: faces facing the
-    // camera are filled, so edges and legs behind it are hidden and the legs read as attached.
-    const W = ICO_V.map((v) => body([v[0] * WK.R * wsq, (SQ0 + (v[1] - SQ0) * sq) * WK.R, v[2] * WK.R * wsq]));
-    const V = W.map(proj);
-    const Cz = proj(body([0, (SQ0 - SQ0 * sq) * WK.R, 0]))[2];
-    const front = ICO_F.map(([a, b, c]) => (V[a][2] + V[b][2] + V[c][2]) / 3 > Cz);
-    ICO_F.forEach(([a, b, c], k) => {
-      const poly = st.faces[k];
-      if (!front[k]) { poly.setAttribute('points', ''); return; }
-      poly.setAttribute('points', [a, b, c].map((n) => `${V[n][0].toFixed(2)},${V[n][1].toFixed(2)}`).join(' '));
-      // soft facet shading: faces turned up and toward the light are paler
-      const wa = W[a], wb = W[b], wc = W[c];
-      const nx = (wb[1] - wa[1]) * (wc[2] - wa[2]) - (wb[2] - wa[2]) * (wc[1] - wa[1]);
-      const ny = (wb[2] - wa[2]) * (wc[0] - wa[0]) - (wb[0] - wa[0]) * (wc[2] - wa[2]);
-      const nz = (wb[0] - wa[0]) * (wc[1] - wa[1]) - (wb[1] - wa[1]) * (wc[0] - wa[0]);
-      const len = Math.hypot(nx, ny, nz) || 1;
-      const mx = (wa[0] + wb[0] + wc[0]) / 3 - P.bx, my = (wa[1] + wb[1] + wc[1]) / 3 - P.by, mz = (wa[2] + wb[2] + wc[2]) / 3 - P.bz;
-      const out = nx * mx + ny * my + nz * mz > 0 ? 1 : -1; // make the normal point outward
-      const light = Math.max(0, (out * (nx * -0.35 + ny * 0.85 + nz * 0.4)) / len);
-      poly.style.fill = `color-mix(in srgb, var(--pm-wire) ${Math.round(3 + 11 * (1 - light))}%, var(--pm-face))`;
-    });
-    // legs: each from its vertex, in the vertical plane through that vertex and its foot; knees arch up and out
-    WK_HIPV.forEach((hp, i) => {
-      const H = W[hp.i];
-      const [reach, lift, side] = P.feet[i];
-      const dir = [hp.dir[0] * cw + hp.dir[1] * sw, -hp.dir[0] * sw + hp.dir[1] * cw]; // follow the body's yaw
-      const F = [P.bx + dir[0] * reach, Math.max(0, lift), P.bz * 0.3 + dir[1] * reach + side];
-      const hu = (H[0] - F[0]) * dir[0] + (H[2] - F[2]) * dir[1]; // hip's distance from the foot, along the leg's plane
-      let du = -hu, dv = F[1] - H[1];
-      let d = Math.hypot(du, dv);
-      const max = 2 * WK.L * 0.995;
-      let Fu = du, Fv = dv;
-      if (d > max) { Fu = (du / d) * max; Fv = (dv / d) * max; d = max; }
-      const base = Math.atan2(Fv, Fu), bend = Math.acos(Math.min(1, Math.max(d, 0.05) / (2 * WK.L)));
-      const ang = base + bend; // knee on the upper side: arches up and out
-      const ku = WK.L * Math.cos(ang), kv = WK.L * Math.sin(ang);
-      const along = (u, v) => [H[0] + dir[0] * u, H[1] + v, H[2] + dir[1] * u];
-      const K = along(ku, kv), Fp = along(Fu, Fv);
-      const inFront = proj(H)[2] > Cz; // legs behind the body go under its faces
-      const [on, off] = inFront ? [st.legsFront, st.legsBack] : [st.legsBack, st.legsFront];
-      taper(on[i * 2], proj(H), proj(K), 3.6, 2.6);
-      taper(on[i * 2 + 1], proj(K), proj(Fp), 2.6, 0); // to a sharp point on the ground
-      off[i * 2].setAttribute('d', ''); off[i * 2 + 1].setAttribute('d', '');
-    });
-    let li = 0;
-    ICO_E.forEach(([a, b], e) => {
-      const isFront = ICO_EF[e].some((k) => front[k]);
-      const ln = (isFront ? st.lines : st.linesBack)[li];
-      (isFront ? st.linesBack : st.lines)[li++].setAttribute('stroke-opacity', '0');
-      const pa = V[a], pb = V[b], z = (pa[2] + pb[2]) / 2;
-      ln.setAttribute('x1', pa[0].toFixed(2)); ln.setAttribute('y1', pa[1].toFixed(2));
-      ln.setAttribute('x2', pb[0].toFixed(2)); ln.setAttribute('y2', pb[1].toFixed(2));
-      ln.setAttribute('stroke-opacity', (shade(z) * dim).toFixed(2));
-      ln.setAttribute('stroke-width', (0.7 + 0.9 * (z + 1) / 2).toFixed(2));
-    });
-    V.forEach((p, i) => {
-      const c = st.dots[i];
-      const lit = P.lit && i === WK_EYE;
-      c.setAttribute('cx', p[0].toFixed(2)); c.setAttribute('cy', p[1].toFixed(2));
-      c.setAttribute('r', lit ? 5 : (1.3 + 1.4 * Math.max(0, Math.min(1, (p[2] + 1) / 2))).toFixed(2));
-      c.setAttribute('class', lit ? 'pm-ico-lit' : '');
-      const seen = p[2] > Cz - 0.12; // vertices behind the solid body are hidden
-      c.setAttribute('fill-opacity', !seen ? 0 : lit ? 1 : (shade(p[2]) * dim).toFixed(2));
-    });
-    // shadow on the ground (smaller while airborne)
-    const g = proj([P.bx, 0, P.bz]);
-    st.shadow.setAttribute('cx', g[0].toFixed(2)); st.shadow.setAttribute('cy', g[1].toFixed(2));
-    st.shadow.setAttribute('rx', (34 * (1 - 0.3 * P.air)).toFixed(2)); st.shadow.setAttribute('ry', (34 * stl * 0.8 * (1 - 0.3 * P.air)).toFixed(2));
-  }
-
-  function createWalker(mood = 'happy') {
-    injectCss();
-    const el = document.createElement('span');
-    el.className = 'pond-mascot pm-walker';
-    el.dataset.mood = MOODS.includes(mood) ? mood : 'happy';
-    const svgEl = document.createElementNS(SVGNS, 'svg');
-    svgEl.setAttribute('viewBox', '-50 -50 100 100');
-    svgEl.setAttribute('aria-hidden', 'true');
-    const g = document.createElementNS(SVGNS, 'g');
-    const shadow = document.createElementNS(SVGNS, 'ellipse');
-    shadow.setAttribute('class', 'pm-wk-shadow');
-    g.appendChild(shadow);
-    const mk = (tag, cls) => { const n = document.createElementNS(SVGNS, tag); if (cls) n.setAttribute('class', cls); g.appendChild(n); return n; };
-    // drawing order: behind the body → the body's faces → in front of it
-    const legsBack = Array.from({ length: 8 }, () => mk('path', 'pm-wk-leg'));
-    const linesBack = ICO_E.map(() => mk('line'));
-    const faces = ICO_F.map(() => mk('polygon', 'pm-wk-face'));
-    const lines = ICO_E.map(() => mk('line'));
-    const legsFront = Array.from({ length: 8 }, () => mk('path', 'pm-wk-leg'));
-    const dots = ICO_V.map(() => mk('circle'));
-    svgEl.appendChild(g);
-    const move = document.createElement('span');
-    move.className = 'pm-move';
-    move.appendChild(svgEl);
-    el.appendChild(move);
-    walkerState.set(el, { lines, linesBack, legsBack, legsFront, faces, dots, shadow, phase: Math.random() * 20, litVertex: Math.floor(Math.random() * 12), action: null });
-    walkerDraw(el, 0); // a still pose for history avatars; live ones move
-    if (el.dataset.mood === 'thinking') el.classList.add('pm-working');
-    new MutationObserver(icoKick).observe(el, { attributes: true, attributeFilter: ['class', 'data-mood'] });
-    icoKick();
-    return el;
-  }
-
   function createIcosa(mood = 'happy') {
     injectCss();
     const el = document.createElement('span');
@@ -509,12 +248,6 @@ html[data-look=plate] .pm-walker{--pm-wire:currentColor}
   function act(el, move) {
     if (!el || el.classList.contains('pm-working') || el.dataset.acting) return;
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-    if (el.classList.contains('pm-walker')) { // its own moves: a real jump, or the shove-and-recover scramble
-      const st = walkerState.get(el);
-      if (st && !st.action) st.action = move === 'spin' ? { type: 'recover', t0: performance.now(), dur: 1500 } : { type: 'jump', t0: performance.now(), dur: 1000 };
-      icoKick();
-      return;
-    }
     if (move === 'spin' && (el.classList.contains('pm-image') || el.classList.contains('pm-icosa'))) move = 'jump'; // the ball-turn needs the mascot's face layers
     const cls = move === 'spin' ? 'pm-spin' : 'pm-jump';
     el.dataset.acting = '1';
@@ -582,5 +315,5 @@ html[data-look=plate] .pm-walker{--pm-wire:currentColor}
     return p;
   }
 
-  window.PondMascot = { create, createImage, createIcosa, createWalker, setMood, act, setPalette, resolvePalette, PALETTES, MOODS };
+  window.PondMascot = { create, createImage, createIcosa, setMood, act, setPalette, resolvePalette, PALETTES, MOODS };
 })();

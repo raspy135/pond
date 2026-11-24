@@ -631,11 +631,9 @@ function addMessage(role, text, { proactive = false, tag = '' } = {}) {
       const mood = proactive ? 'wow' : 'happy';
       const m = uiState.avatarMode === 'image' && uiState.avatarExt
         ? window.PondMascot.createImage(`/appearance/avatar?v=${uiState.avatarVersion || 0}`, mood, { circle: uiState.avatarCircle !== false })
-        : uiState.avatarMode === 'walker' && window.PondMascot.createWalker
-          ? window.PondMascot.createWalker(mood)
-          : (uiState.avatarMode === 'icosa' || !uiState.avatarMode) && window.PondMascot.createIcosa
-            ? window.PondMascot.createIcosa(mood)
-            : window.PondMascot.create(mood, { compact: true });
+        : (uiState.avatarMode === 'icosa' || !uiState.avatarMode) && window.PondMascot.createIcosa
+          ? window.PondMascot.createIcosa(mood)
+          : window.PondMascot.create(mood, { compact: true });
       avatar.appendChild(m);
       makeAliveMascot(m);
     } else {
@@ -2410,8 +2408,7 @@ async function loadAppearancePanel() {
   const ui = settings.ui || {};
   const usingImage = ui.avatarMode === 'image' && ui.avatarExt;
   const usingIcosa = ui.avatarMode === 'icosa' || !ui.avatarMode;
-  const usingWalker = ui.avatarMode === 'walker';
-  const makeChar = (opts) => (usingWalker ? window.PondMascot.createWalker('happy') : usingIcosa ? window.PondMascot.createIcosa('happy') : window.PondMascot.create('happy', opts));
+  const makeChar = (opts) => (usingIcosa ? window.PondMascot.createIcosa('happy') : window.PondMascot.create('happy', opts));
   el.innerHTML = `
     <div class="section-sub" style="margin-top:0">Look <span class="card-meta">(this device)</span></div>
     <div class="btn-group look-row" style="margin-bottom:14px">
@@ -2428,13 +2425,12 @@ async function loadAppearancePanel() {
       <div class="appearance-preview avatar-preview">${usingImage ? `<img src="/appearance/avatar?v=${ui.avatarVersion}" alt="" class="${ui.avatarCircle !== false ? 'circle' : ''}">` : ''}</div>
       <div style="flex:1;min-width:220px">
         <div class="btn-group">
-          <button type="button" class="btn sm${!usingImage && !usingIcosa && !usingWalker ? ' primary' : ''}" data-act="mascot">Ink splash</button>
+          <button type="button" class="btn sm${!usingImage && !usingIcosa ? ' primary' : ''}" data-act="mascot">Ink splash</button>
           <button type="button" class="btn sm${usingIcosa ? ' primary' : ''}" data-act="icosa">Icosahedron</button>
-          <button type="button" class="btn sm${usingWalker ? ' primary' : ''}" data-act="walker">Icosahedron with legs</button>
           <label class="btn sm${usingImage ? ' primary' : ''}">Upload image…<input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" data-act="upload" hidden></label>
         </div>
         <label class="checkbox-field" style="margin-top:6px"><input type="checkbox" data-act="circle" ${ui.avatarCircle !== false ? 'checked' : ''}> Crop to circle</label>
-        <div class="card-meta">${usingImage ? 'Using your image. Color below still sets the send button.' : usingWalker ? 'The icosahedron on four sharp, pointed legs. It trots while Pond works, hops when something new comes in, and lies down when sleepy.' : usingIcosa ? 'A wireframe icosahedron. It turns faster while Pond works. In the Plate look it is drawn in ink; in Classic, in the color below.' : 'The Pond ink splash. Or upload a PNG, JPG, WebP, GIF or SVG, up to 2 MB.'}</div>
+        <div class="card-meta">${usingImage ? 'Using your image. Color below still sets the send button.' : usingIcosa ? 'A wireframe icosahedron. It turns faster while Pond works. In the Plate look it is drawn in ink; in Classic, in the color below.' : 'The Pond ink splash. Or upload a PNG, JPG, WebP, GIF or SVG, up to 2 MB.'}</div>
       </div>
     </div>
     <div class="section-sub">Color</div>
@@ -2467,7 +2463,6 @@ async function loadAppearancePanel() {
     loadAppearancePanel();
   };
   el.querySelector('[data-act="icosa"]').onclick = () => setChar('icosa');
-  el.querySelector('[data-act="walker"]').onclick = () => setChar('walker');
   el.querySelector('[data-act="upload"]').onchange = async (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
