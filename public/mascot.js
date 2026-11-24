@@ -234,11 +234,12 @@ html[data-look=plate] .pm-walker{--pm-wire:currentColor}
   // The pose for this moment: body position/attitude, and each foot as [radial reach, lift, sideways shift].
   function walkerPose(el, st, t, nowMs) {
     const mood = el.dataset.mood || 'happy';
-    const P = { bx: 0, by: WK.stand, bz: 0, pitch: 0, roll: 0, yaw: 0, feet: WK_HIPV.map(() => [WK.spread, 0, 0]), air: 0, lit: mood === 'wow' };
+    const P = { sq: 1, bx: 0, by: WK.stand, bz: 0, pitch: 0, roll: 0, yaw: 0, feet: WK_HIPV.map(() => [WK.spread, 0, 0]), air: 0, lit: mood === 'wow' };
     const tt = t + st.phase;
     if (mood === 'thinking') {
       const f = 2.3;
       P.by = WK.stand - 0.03 + 0.03 * Math.cos(4 * Math.PI * f * tt);
+      P.sq = 1 + 0.05 * Math.cos(4 * Math.PI * f * tt); // flattens a little on every footfall
       P.yaw = 0.08 * Math.sin(2 * Math.PI * f * tt);
       P.roll = 0.03 * Math.sin(2 * Math.PI * f * tt + 1);
       P.feet = WK_HIPV.map((_, i) => {
@@ -249,14 +250,19 @@ html[data-look=plate] .pm-walker{--pm-wire:currentColor}
       });
     } else if (mood === 'sleepy') {
       P.by = 0.56 + 0.012 * Math.sin(tt * 0.9); // lies down: legs splay out
+      P.sq = 0.9 + 0.03 * Math.sin(tt * 0.9); // slow, deep breaths
       P.feet = WK_HIPV.map(() => [WK.spread + 0.28, 0, 0]);
     } else if (mood === 'sad') {
       P.by = WK.stand - 0.12;
       P.pitch = -0.14;
+      P.sq = 0.93 + 0.015 * Math.sin(tt * 1.2); // droops
       P.feet = WK_HIPV.map(() => [WK.spread + 0.06, 0, 0]);
     } else {
       // idle: shift weight, sway, and lift a foot now and then
-      P.by = WK.stand + 0.015 * Math.sin(tt * 1.6);
+      // breathing, plus a happy little knee-bob every few seconds (the jelly body jiggles after it)
+      const bob = frac(tt / 2.6), dip = bob < 0.22 ? Math.sin((Math.PI * bob) / 0.22) : 0;
+      P.by = WK.stand + 0.015 * Math.sin(tt * 1.6) - 0.08 * dip;
+      P.sq = 1 + 0.035 * Math.sin(tt * 1.85) - 0.1 * dip;
       P.roll = 0.05 * Math.sin(tt * 0.8);
       P.bz = 0.035 * Math.sin(tt * 0.8);
       P.pitch = 0.03 * Math.sin(tt * 1.1);
@@ -272,20 +278,22 @@ html[data-look=plate] .pm-walker{--pm-wire:currentColor}
       if (u >= 1) st.action = null;
       else if (a.type === 'jump') {
         const crouch = WK.stand - 0.22;
-        if (u < 0.22) P.by = WK.stand - 0.22 * ease(u / 0.22);
+        if (u < 0.22) { P.by = WK.stand - 0.22 * ease(u / 0.22); P.sq = 1 - 0.2 * ease(u / 0.22); }
         else if (u < 0.7) {
           const v = (u - 0.22) / 0.48;
           P.by = crouch + 0.12 * v + 0.6 * Math.sin(Math.PI * v);
+          P.sq = 1 + 0.18 * Math.sin(Math.PI * Math.min(1, v * 1.6)) * (1 - v); // stretches as it launches
           P.pitch = 0.2 * Math.sin(2 * Math.PI * v);
           P.air = Math.sin(Math.PI * v);
           P.feet = WK_HIPV.map(() => [WK.spread - 0.12 * Math.sin(Math.PI * v), 0, 0]); // legs draw in while airborne
-        } else P.by = WK.stand - 0.1 + 0.1 * ease((u - 0.7) / 0.3);
+        } else { const w = (u - 0.7) / 0.3; P.by = WK.stand - 0.1 + 0.1 * ease(w); P.sq = 1 - 0.22 * (1 - ease(w)); } // lands flat, springs back
         P.lit = true;
       } else if (a.type === 'recover') {
         // shoved sideways: the body swings out and back while the feet scramble to stay under it
         const push = u < 0.16 ? Math.sin((u / 0.16) * Math.PI / 2) : Math.exp(-3.2 * (u - 0.16)) * Math.cos((u - 0.16) * 7);
         P.bz = 0.26 * push;
         P.roll = -0.35 * push;
+        P.sq = 1 - 0.1 * Math.abs(push);
         const fade = Math.max(0, 1 - u * 1.3);
         P.feet = WK_HIPV.map((_, i) => {
           const ph = frac(u * 6 + WK_TROT[i]);
@@ -302,6 +310,21 @@ html[data-look=plate] .pm-walker{--pm-wire:currentColor}
     if (!st) return;
     const mood = el.dataset.mood || 'happy';
     const P = walkerPose(el, st, t, nowMs);
+    // Jelly: the body's squash-and-stretch follows the pose, plus a springy wobble kicked by how hard the body speeds
+    // up or slows down vertically (a landing squashes it, then it jiggles back).
+    const dt = st.lastMs ? Math.min(0.05, Math.max(0, (nowMs - st.lastMs) / 1000)) : 0;
+    st.lastMs = nowMs;
+    if (dt > 0) {
+      const vy = (P.by - (st.prevBy ?? P.by)) / dt;
+      const ay = Math.max(-60, Math.min(60, (vy - (st.prevVy ?? vy)) / dt));
+      st.prevVy = vy;
+      st.jv = (st.jv || 0) + (-520 * (st.j || 0) - 11 * (st.jv || 0) - 1.1 * ay) * dt;
+      st.j = Math.max(-0.2, Math.min(0.2, (st.j || 0) + st.jv * dt));
+    }
+    st.prevBy = P.by;
+    const sq = Math.max(0.7, Math.min(1.3, P.sq + (st.j || 0)));
+    const wsq = 1 / Math.sqrt(sq); // keeps the volume: flatter is wider
+    const SQ0 = -1.3; // squash about the hips, so the legs stay planted
     const cp = Math.cos(P.pitch), sp = Math.sin(P.pitch), cr = Math.cos(P.roll), sr = Math.sin(P.roll), cw = Math.cos(P.yaw), sw = Math.sin(P.yaw);
     const body = ([x, y, z]) => { // body → world: yaw, roll, pitch, then position
       const x0 = x * cw + z * sw, z0 = -x * sw + z * cw;
@@ -332,9 +355,9 @@ html[data-look=plate] .pm-walker{--pm-wire:currentColor}
     };
     // the icosahedron body (no spin of its own: the legs are joined to its vertices). It is solid: faces facing the
     // camera are filled, so edges and legs behind it are hidden and the legs read as attached.
-    const W = ICO_V.map((v) => body([v[0] * WK.R, v[1] * WK.R, v[2] * WK.R]));
+    const W = ICO_V.map((v) => body([v[0] * WK.R * wsq, (SQ0 + (v[1] - SQ0) * sq) * WK.R, v[2] * WK.R * wsq]));
     const V = W.map(proj);
-    const Cz = proj(body([0, 0, 0]))[2];
+    const Cz = proj(body([0, (SQ0 - SQ0 * sq) * WK.R, 0]))[2];
     const front = ICO_F.map(([a, b, c]) => (V[a][2] + V[b][2] + V[c][2]) / 3 > Cz);
     ICO_F.forEach(([a, b, c], k) => {
       const poly = st.faces[k];
