@@ -577,6 +577,8 @@ body {
   padding: 10px 18px; border-radius: 12px; font-size: .84rem; z-index: 90;
   box-shadow: 0 8px 30px var(--shadow); max-width: 90vw;
 }
+#toast.clickable { cursor: pointer; }
+#toast.clickable:hover { border-color: var(--text); }
 
 /* ---------- markdown rendering ---------- */
 .msg-body > :first-child { margin-top: 0; }

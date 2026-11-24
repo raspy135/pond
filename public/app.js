@@ -139,9 +139,11 @@ function escapeHtml(s) {
 }
 
 let toastTimer = null;
-function showToast(msg) {
+function showToast(msg, onClick = null) {
   toastEl.textContent = msg;
   toastEl.hidden = false;
+  toastEl.classList.toggle('clickable', Boolean(onClick));
+  toastEl.onclick = onClick ? () => { toastEl.hidden = true; onClick(); } : null;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => (toastEl.hidden = true), 4200);
 }
@@ -330,6 +332,7 @@ async function fireDesktopNotification(n) {
       id: n.id,
       category: n.category,
       sessionId: n.sessionId,
+      messageTs: n.messageTs || null,
       meta: n.meta || {},
     },
   };
@@ -360,11 +363,17 @@ async function fireDesktopNotification(n) {
   }
 }
 
-function handleNotificationJump(data) {
+// Go to what an alert is about: its chat message (most alerts are posted to a chat), the email, or the approval.
+async function handleNotificationJump(data) {
   if (!data) return;
-  if (data.category === 'email') openDrawer('emailDrawer');
+  const meta = data.meta || {};
+  const emailId = meta.emailId || data.emailId;
+  closeAllDrawers();
+  if (emailId) openEmailView(emailId);
   else if (data.category === 'approval') renderSentinelBanner();
-  else if (data.sessionId && data.sessionId !== currentSessionId) switchSession(data.sessionId); // e.g. a routine's result
+  else if (data.sessionId) openChatAt(data.sessionId, data.messageTs || null).catch(() => {});
+  else if (data.category === 'email') openDrawer('emailDrawer');
+  else openDrawer('notifDrawer');
   if (data.id) {
     fetch('/api/notifications/read', {
       method: 'POST',
@@ -1372,10 +1381,7 @@ function renderSearchResults(data) {
       title: n.title, meta: shortDate(n.ts), snippet: n.snippet, iconName: 'bell',
       onClick: () => {
         leave();
-        fetch('/api/notifications/read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: n.id }) }).catch(() => {});
-        if (n.emailId) openEmailView(n.emailId);
-        else if (n.sessionId) openChatAt(n.sessionId, null);
-        else openDrawer('notifDrawer');
+        handleNotificationJump(n);
       },
     }));
   }
@@ -1391,7 +1397,8 @@ async function openChatAt(sessionId, ts) {
   row.classList.remove('search-flash');
   void row.offsetWidth;
   row.classList.add('search-flash');
-  setTimeout(() => row.classList.remove('search-flash'), 2400);
+  clearTimeout(row._flashTimer);
+  row._flashTimer = setTimeout(() => row.classList.remove('search-flash'), 2400);
 }
 async function openEmailView(id) {
   const r = await fetch(`/api/emails/${encodeURIComponent(id)}`).then((x) => x.json()).catch(() => ({ error: 'network error' }));
@@ -1862,16 +1869,8 @@ async function loadNotificationsDrawer() {
       loadNotificationsDrawer();
       refreshState();
     };
-    card.onclick = async () => {
-      if (!n.read) {
-        await fetch('/api/notifications/read', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: n.id }),
-        });
-        loadNotificationsDrawer();
-      }
-    };
+    card.onclick = () => handleNotificationJump(n);
+    card.style.cursor = 'pointer';
     list.appendChild(card);
   }
 }
@@ -3072,7 +3071,7 @@ function connectEvents() {
         localStorage.setItem('pond_last_notif_seq', String(lastNotifSeq));
       }
       if (!payload.replay) {
-        showToast(`${n.title}: ${n.body}`);
+        showToast(`${n.title}: ${n.body}`, () => handleNotificationJump(n));
         fireDesktopNotification(n);
       }
       refreshState();
@@ -4059,15 +4058,20 @@ window.addEventListener('focus', () => syncTick());
 // Boot
 (async function init() {
   syncNotifPermissionUI();
+  const wantNotif = new URLSearchParams(location.search).get('notif');
   const wantSession = new URLSearchParams(location.search).get('session');
+  if (wantSession || wantNotif) window.history.replaceState(null, '', location.pathname); // tidy URL (`history` here is the chat array)
   if (wantSession) {
-    window.history.replaceState(null, '', location.pathname); // tidy URL (`history` here is the chat array)
     setCurrentSession(wantSession);
     fetch('/api/sessions/activate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: wantSession }) }).catch(() => {});
   }
   await loadConversation({ force: true });
   await loadSessions();
   await refreshState();
+  if (wantNotif) { // opened from a notification while the app was closed
+    const n = await fetch('/api/notifications').then((r) => r.json()).then((d) => (d.notifications || []).find((x) => x.id === wantNotif)).catch(() => null);
+    if (n) handleNotificationJump(n);
+  }
   connectEvents();
   setInterval(syncTick, SYNC_INTERVAL_MS);
   setInterval(refreshState, 25_000);

@@ -1,5 +1,5 @@
 // Pond service worker — app-shell caching, network-first for API, rich desktop/PWA notifications.
-const CACHE = 'pond-shell-v96';
+const CACHE = 'pond-shell-v100';
 const SHELL = ['/', '/index.html', '/styles.css', '/icons.js', '/app.js', '/manifest.webmanifest', '/icons/icon.svg', '/icons/icon-192.png', '/markdown.js', '/mascot.js'];
 
 self.addEventListener('install', (event) => {
@@ -39,20 +39,23 @@ self.addEventListener('notificationclick', (event) => {
   if (event.action === 'dismiss') return;
 
   const data = event.notification.data || {};
-  event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if ('focus' in client) {
-          client.focus();
-          client.postMessage({ type: 'notification_clicked', action: event.action || 'open', data });
-          return;
-        }
-      }
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(data.sessionId ? `/?session=${encodeURIComponent(data.sessionId)}` : '/');
-      }
-    })
-  );
+  event.waitUntil((async () => {
+    const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    // prefer the window the user was last looking at
+    const client = list.find((c) => c.focused) || list.find((c) => c.visibilityState === 'visible') || list[0];
+    if (client) {
+      try { await client.focus(); } catch { /* still tell it where to go */ }
+      client.postMessage({ type: 'notification_clicked', action: event.action || 'open', data });
+      return;
+    }
+    // app closed: open it straight at the alert (the page reads ?notif= on start)
+    if (self.clients.openWindow) {
+      const q = new URLSearchParams();
+      if (data.id) q.set('notif', data.id);
+      if (data.sessionId) q.set('session', data.sessionId);
+      await self.clients.openWindow(`/${q.toString() ? `?${q}` : ''}`);
+    }
+  })());
 });
 
 // Web Push from the Pond server (lib/push.js) — works while the app is closed.
@@ -74,7 +77,7 @@ self.addEventListener('push', (event) => {
       actions: isApproval
         ? [{ action: 'review', title: 'Review' }, { action: 'dismiss', title: 'Dismiss' }]
         : [{ action: 'open', title: 'Open Pond' }, { action: 'dismiss', title: 'Dismiss' }],
-      data: { id: p.id, category: p.category, sessionId: p.sessionId, meta: p.meta || {} },
+      data: { id: p.id, category: p.category, sessionId: p.sessionId, messageTs: p.messageTs || null, meta: p.meta || {} },
     }).then(() => (self.navigator && self.navigator.setAppBadge ? self.navigator.setAppBadge().catch(() => {}) : null))
   );
 });
