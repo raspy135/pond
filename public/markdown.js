@@ -89,6 +89,8 @@ ${user}
     return pre + code;
   }
 
+  // The installed app opens pages in a window with no address bar — this is how to get a page's link.
+  const copyLinkBtn = (url) => `<button type="button" class="artifact-btn" data-act="copy-link" data-url="${esc(url)}" title="Copy this page's link">Copy link</button>`;
   const esc = (s) =>
     String(s)
       .replace(/&/g, '&amp;')
@@ -181,7 +183,7 @@ ${user}
     const title = (mm[1] || '').trim() || name;
     const ext = (/\.([a-z0-9]+)$/i.exec(url.split('?')[0]) || [])[1]?.toLowerCase() || '';
     const u = esc(url);
-    const open = `<a class="artifact-btn" href="${u}" target="_blank" rel="noopener" title="Open full page">Open ↗</a>`;
+    const open = `${copyLinkBtn(url)}<a class="artifact-btn" href="${u}" target="_blank" rel="noopener" title="Open full page">Open ↗</a>`;
     if (/^(png|jpe?g|gif|webp|svg|avif)$/.test(ext)) {
       return `<figure class="embed-img"><a href="${u}" target="_blank" rel="noopener"><img src="${u}" alt="${esc(title)}" loading="lazy"></a>${mm[1] ? `<figcaption>${esc(title)}</figcaption>` : ''}</figure>`;
     }
@@ -194,7 +196,7 @@ ${user}
       return `<div class="artifact artifact-embed"><div class="artifact-bar"><span class="artifact-title">${esc(title)}</span><span class="artifact-actions">${open}</span></div><iframe sandbox="allow-scripts allow-forms allow-popups" loading="lazy" src="${esc(src)}"></iframe></div>`;
     }
     const kind = ext ? ext.toUpperCase() : 'FILE';
-    return `<a class="embed-file" href="${u}" target="_blank" rel="noopener"><span class="embed-file-kind">${esc(kind)}</span><span class="embed-file-name">${esc(title)}</span><span class="embed-file-open">Open ↗</span></a>`;
+    return `<div class="embed-file-wrap"><a class="embed-file" href="${u}" target="_blank" rel="noopener"><span class="embed-file-kind">${esc(kind)}</span><span class="embed-file-name">${esc(title)}</span><span class="embed-file-open">Open ↗</span></a>${copyLinkBtn(url)}</div>`;
   }
 
   // opts.streaming: a reply still arriving — pages / 3D / embeds are shown as plain code or links until it's done,
@@ -230,12 +232,12 @@ ${user}
         } else if (lang === 'threejs' || lang === 'three') {
           const hm = code.match(/^\s*\/\/\s*height:\s*(\d{2,4})/);
           const h = Math.max(200, Math.min(900, hm ? Number(hm[1]) : 380));
-          out.push(`<div class="artifact artifact-3d"><div class="artifact-bar"><span>3D · three.js · <span class="artifact-id">${htmlId(code)}</span></span><span class="artifact-actions"><a class="artifact-btn" href="/html/${htmlId(code)}" target="_blank" rel="noopener" title="Open full page">Open ↗</a><button type="button" class="artifact-btn" data-act="expand" title="Expand">⤢</button><button type="button" class="artifact-btn" data-act="code" title="Show code">&lt;/&gt;</button></span></div><iframe sandbox="allow-scripts" loading="lazy" style="height:${h}px" srcdoc="${esc(threeSrcdoc(code))}"></iframe><pre class="artifact-code" hidden><code class="lang-js">${esc(code)}</code></pre></div>`);
+          out.push(`<div class="artifact artifact-3d"><div class="artifact-bar"><span>3D · three.js · <span class="artifact-id">${htmlId(code)}</span></span><span class="artifact-actions">${copyLinkBtn(`/html/${htmlId(code)}`)}<a class="artifact-btn" href="/html/${htmlId(code)}" target="_blank" rel="noopener" title="Open full page">Open ↗</a><button type="button" class="artifact-btn" data-act="expand" title="Expand">⤢</button><button type="button" class="artifact-btn" data-act="code" title="Show code">&lt;/&gt;</button></span></div><iframe sandbox="allow-scripts" loading="lazy" style="height:${h}px" srcdoc="${esc(threeSrcdoc(code))}"></iframe><pre class="artifact-code" hidden><code class="lang-js">${esc(code)}</code></pre></div>`);
         } else if (lang === 'html') {
           const hid = htmlId(code);
           const hm = code.match(/^\s*<!--\s*height:\s*(\d{2,4})\s*-->/i);
           const hstyle = hm ? ` style="height:${Math.max(200, Math.min(1400, Number(hm[1])))}px"` : '';
-          out.push(`<div class="artifact"><div class="artifact-bar"><span>html · <span class="artifact-id" title="Auto-saved id — ask Pond to reuse or edit it">${hid}</span></span><span class="artifact-actions"><a class="artifact-btn" href="/html/${hid}" target="_blank" rel="noopener" title="Open full page">Open ↗</a></span></div><iframe sandbox="allow-scripts" loading="lazy"${hstyle} srcdoc="${esc(withPrelude(code))}"></iframe></div>`);
+          out.push(`<div class="artifact"><div class="artifact-bar"><span>html · <span class="artifact-id" title="Auto-saved id — ask Pond to reuse or edit it">${hid}</span></span><span class="artifact-actions">${copyLinkBtn(`/html/${hid}`)}<a class="artifact-btn" href="/html/${hid}" target="_blank" rel="noopener" title="Open full page">Open ↗</a></span></div><iframe sandbox="allow-scripts" loading="lazy"${hstyle} srcdoc="${esc(withPrelude(code))}"></iframe></div>`);
         } else {
           out.push(`<pre><code class="lang-${esc(lang)}">${esc(code)}</code></pre>`);
         }

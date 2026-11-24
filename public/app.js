@@ -403,7 +403,7 @@ async function copyText(text, btn) {
       ta.remove();
     } catch { ok = false; }
   }
-  if (!ok) { showToast('Could not copy to clipboard'); return; }
+  if (!ok) { showToast('Could not copy to clipboard'); return false; }
   if (btn) {
     const actions = btn.closest('.msg-actions');
     btn.classList.add('copied');
@@ -416,6 +416,7 @@ async function copyText(text, btn) {
       btn.innerHTML = icon('copy', 13);
     }, 1500);
   }
+  return true;
 }
 
 // ---------- Chat UI ----------
@@ -501,7 +502,13 @@ document.addEventListener('click', (e) => {
   const art = btn.closest('.artifact');
   if (btn.dataset.act === 'expand') art.classList.toggle('expanded');
   if (btn.dataset.act === 'code') { const pre = art.querySelector('.artifact-code'); if (pre) pre.hidden = !pre.hidden; }
+  if (btn.dataset.act === 'copy-link') {
+    e.preventDefault();
+    const url = new URL(btn.dataset.url, location.href).href;
+    copyText(url).then((ok) => { if (ok) showToast(`Link copied: ${url}`); else window.prompt('Copy this link:', url); });
+  }
 });
+
 
 // ---------- Plugin UI slots ----------
 function setMessageFooter(bodyEl, footers) {

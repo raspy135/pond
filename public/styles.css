@@ -628,6 +628,9 @@ body {
 .embed-img figcaption { font-size: .8rem; color: var(--muted, #64748b); margin-top: 4px; }
 .embed-media { display: block; width: 100%; max-height: 70vh; margin: 4px 0 10px; border-radius: 10px; }
 audio.embed-media { height: 40px; }
+.embed-file-wrap { display: flex; align-items: stretch; gap: 6px; margin: 4px 0 10px; }
+.embed-file-wrap .embed-file { flex: 1; min-width: 0; margin: 0; }
+.embed-file-wrap > .artifact-btn { flex: none; align-self: center; }
 .embed-file { display: flex; align-items: center; gap: 10px; margin: 4px 0 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; color: inherit; text-decoration: none; }
 .embed-file:hover { border-color: var(--pm-body, var(--accent)); }
 .embed-file-kind { font-size: .68rem; font-weight: 700; letter-spacing: .04em; padding: 3px 6px; border-radius: 6px; background: color-mix(in srgb, var(--pm-body, var(--accent)) 16%, transparent); color: var(--pm-body, var(--accent)); }
@@ -640,6 +643,7 @@ audio.embed-media { height: 40px; }
 .artifact-btn { border: 1px solid var(--border); background: transparent; color: inherit; border-radius: 6px; font-size: .72rem; padding: 1px 7px; cursor: pointer; line-height: 1.4; }
 .artifact-id { font-family: ui-monospace, Consolas, monospace; opacity: .7; text-transform: none; }
 a.artifact-btn { text-decoration: none; }
+.artifact-bar button.artifact-btn { text-transform: inherit; letter-spacing: inherit; font-family: inherit; } /* match the Open link */
 .artifact-btn:hover { border-color: var(--accent); color: var(--accent); }
 .artifact-code { margin: 0; max-height: 260px; overflow: auto; border-radius: 0; }
 
