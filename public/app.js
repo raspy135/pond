@@ -2845,7 +2845,7 @@ async function loadConversation({ force = true, silent = false } = {}) {
         if (!hasText && Array.isArray(m.tool_calls) && m.tool_calls.length) {
           if (m.reasoning) {
             const wrap = document.createElement('div');
-            wrap.className = 'tool-trace';
+            wrap.className = 'thought-step';
             addThoughtBlock(wrap, m.reasoning, { open: false, label: 'Thought' });
             messagesEl.appendChild(wrap);
           }
