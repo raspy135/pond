@@ -453,6 +453,12 @@
               <label>Temperature (blank = default)<input type="number" step="0.05" min="0" max="2" id="llmTemp" placeholder="default" /></label>
               <label>Max Output Tokens (optional)<input type="number" min="64" id="llmMaxTokens" placeholder="default" /></label>
             </div>
+            <div class="two-col">
+              <label>Sessions at once (sub-agents)
+                <input type="number" min="1" max="8" step="1" id="llmMaxSessions" placeholder="1" />
+              </label>
+              <div class="card-meta" style="align-self:end;">1 = off. 4 = the chat plus up to 3 sub-agents working in parallel. Sub-agents use this model and every tool except starting more sub-agents. Your model server must handle that many requests at once.</div>
+            </div>
             <div class="checkbox-field">
               <span>Input types:</span>
               <label><input type="checkbox" checked disabled /> Text</label>

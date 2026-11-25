@@ -2144,6 +2144,7 @@ function syncLlmProfileFields(cfg, key) {
   $('#llmApiKey').value = p.apiKey || '';
   $('#llmTemp').value = p.temperature ?? '';
   $('#llmMaxTokens').value = p.maxTokens ?? '';
+  $('#llmMaxSessions').value = p.maxSessions ?? 1;
   $('#llmInputImage').checked = Array.isArray(p.inputTypes) && p.inputTypes.includes('image');
   $('#llmTestResult').textContent = '';
   const count = Object.keys(cfg?.profiles || {}).length;
@@ -3609,6 +3610,7 @@ $('#saveLlmFormBtn').addEventListener('click', async () => {
     apiKey: $('#llmApiKey').value.trim(),
     temperature: $('#llmTemp').value === '' ? null : Number($('#llmTemp').value),
     maxTokens: $('#llmMaxTokens').value === '' ? null : Number($('#llmMaxTokens').value),
+    maxSessions: Math.max(1, Math.min(8, Math.round(Number($('#llmMaxSessions').value) || 1))),
     inputTypes: $('#llmInputImage').checked ? ['text', 'image'] : ['text'],
   };
   const resp = await fetch('/api/llm', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(next) });
