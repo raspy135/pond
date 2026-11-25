@@ -1038,9 +1038,22 @@ async function attachToTurn(turn) {
   }
 }
 
+// Commands built into the message box (shown in the / menu before skills).
+const BUILTIN_COMMANDS = [
+  { name: 'compact', description: 'Summarize older messages now to free up context', builtin: true, run: compactChat },
+];
+
 async function sendMessage(text) {
   const trimmed = text.trim();
   if ((!trimmed && !pendingImages.length) || busy) return;
+  const cmd = BUILTIN_COMMANDS.find((c) => trimmed.toLowerCase() === `/${c.name}`);
+  if (cmd && !pendingImages.length) {
+    closeSlashMenu();
+    input.value = '';
+    autoGrowInput();
+    cmd.run();
+    return;
+  }
   closeSlashMenu();
   const outgoingImages = pendingImages.map((p) => p.dataUrl);
   pendingImages = [];
@@ -1136,7 +1149,7 @@ async function refreshState() {
       const pct = Math.min(100, Math.round((s.sessionTokens / s.contextLength) * 100));
       const usedK = (s.sessionTokens / 1000).toFixed(1);
       const maxK = Math.round(s.contextLength / 1000);
-      $('#contextLine').textContent = `Context: ~${usedK}k / ${maxK}k (${pct}% · auto-compacts at 85%)`;
+      $('#contextLine').textContent = `Context: ~${usedK}k / ${maxK}k (${pct}% · auto-compacts at 75%)`;
     }
 
     const aggr = (s.proactive?.aggressiveness || 'high').toUpperCase();
@@ -3403,9 +3416,10 @@ function slashQuery() {
 function closeSlashMenu() { slashMatches = []; $('#slashMenu').hidden = true; }
 function renderSlashMenu() {
   const q = slashQuery();
-  if (q === null || !skillCache.length) return closeSlashMenu();
-  const starts = skillCache.filter((s) => s.name.startsWith(q));
-  const contains = skillCache.filter((s) => !s.name.startsWith(q) && (s.name.includes(q) || (s.description || '').toLowerCase().includes(q)));
+  if (q === null) return closeSlashMenu();
+  const all = [...BUILTIN_COMMANDS, ...skillCache.filter((s) => !BUILTIN_COMMANDS.some((c) => c.name === s.name))];
+  const starts = all.filter((s) => s.name.startsWith(q));
+  const contains = all.filter((s) => !s.name.startsWith(q) && (s.name.includes(q) || (s.description || '').toLowerCase().includes(q)));
   slashMatches = [...starts, ...contains].slice(0, 8);
   if (!slashMatches.length) return closeSlashMenu();
   slashIndex = Math.min(slashIndex, slashMatches.length - 1);
@@ -3422,7 +3436,7 @@ function renderSlashMenu() {
 function acceptSlash(i = slashIndex) {
   const s = slashMatches[i];
   if (!s) return;
-  input.value = `/${s.name} `; // trailing space lets you add details, e.g. "/mission-control-dashboard for this week"
+  input.value = s.builtin ? `/${s.name}` : `/${s.name} `; // trailing space lets you add details, e.g. "/mission-control-dashboard for this week"
   closeSlashMenu();
   input.focus();
   input.setSelectionRange(input.value.length, input.value.length);
@@ -3430,6 +3444,7 @@ function acceptSlash(i = slashIndex) {
 
 input.addEventListener('keydown', (e) => {
   if (!$('#slashMenu').hidden && slashMatches.length) {
+    if (e.key === 'Enter' && !e.shiftKey && slashMatches[slashIndex]?.builtin) { e.preventDefault(); acceptSlash(); sendMessage(input.value); return; } // /compact runs at once
     if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) { e.preventDefault(); acceptSlash(); return; }
     if (e.key === 'ArrowDown') { e.preventDefault(); slashIndex = (slashIndex + 1) % slashMatches.length; renderSlashMenu(); return; }
     if (e.key === 'ArrowUp') { e.preventDefault(); slashIndex = (slashIndex - 1 + slashMatches.length) % slashMatches.length; renderSlashMenu(); return; }
@@ -4203,13 +4218,15 @@ $('#quickAddMcpBtn').addEventListener('click', async () => {
   loadMcpDiscovery();
 });
 
-$('#compactBtn').addEventListener('click', async () => {
+// Summarize this chat's older messages now (sidebar "compact", or /compact in the message box).
+async function compactChat() {
   showToast('Compacting older chat history…');
-  const res = await fetch('/api/sessions/compact', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: currentSessionId }) }).then((r) => r.json());
+  const res = await fetch('/api/sessions/compact', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: currentSessionId }) }).then((r) => r.json()).catch(() => ({ error: 'Could not reach Pond' }));
   if (res.error) showToast(res.error);
   else if (!res.compacted) showToast('Chat is already short — nothing to compact yet.');
   refreshState();
-});
+}
+$('#compactBtn').addEventListener('click', compactChat);
 
 $('#openMemoryLink').addEventListener('click', () => { document.body.classList.remove('sidebar-open'); memUi.doc = null; openDrawer('memDrawer'); });
 $('#dreamLine').addEventListener('click', () => { document.body.classList.remove('sidebar-open'); memUi.doc = null; openDrawer('memDrawer'); });
