@@ -793,6 +793,14 @@ function addToolTrace(name, args, result) {
     <summary>${icon('sliders', 12)}<span class="tool-trace-label">${escapeHtml(shortSummary)}</span></summary>
     <div class="tool-trace-detail">${escapeHtml(argStr ? `args: ${argStr}\n` : '')}result: ${escapeHtml(resStr.length > 800 ? resStr.slice(0, 800) + '…' : resStr)}</div>
   `;
+  if (name === 'spawn_subagent' && result && typeof result === 'object' && result.chat) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn sm tool-trace-open';
+    b.textContent = `Open ${args?.role ? `“${String(args.role).slice(0, 40)}”` : 'sub-agent'} chat`;
+    b.onclick = (e) => { e.preventDefault(); switchSession(result.chat); };
+    details.querySelector('summary').appendChild(b);
+  }
   messagesEl.appendChild(details);
   scrollToLatest();
 }
@@ -2659,7 +2667,59 @@ async function loadSkillsPanel() {
 // Pinned chats sit at the top in the user's order (drag to reorder; drag a chat above the line to pin it, below to
 // unpin). Every other chat is listed by recent activity. Double-click a title (or the pencil) to rename.
 function sessionsKeyOf(data) {
-  return `${(data.running || []).join(',')}|${(data.pinned || []).join(',')}|${(data.sessions || []).map((x) => `${x.id}:${x.updatedAt || ''}:${x.title || ''}`).join(',')}`;
+  return `${(data.running || []).join(',')}|${(data.pinned || []).join(',')}|${(data.sessions || []).map((x) => `${x.id}:${x.updatedAt || ''}:${x.title || ''}:${x.subagent?.status || ''}`).join(',')}`;
+}
+
+// ---------- Sub-agent chats ----------
+// A sub-agent works in its own chat: you can watch it, but not type in it. The bar says whose it is and can stop it.
+let currentSubagent = null;
+function setSubagentView(data) {
+  const sa = data?.subagent || null;
+  currentSubagent = sa;
+  document.body.classList.toggle('is-subagent', Boolean(sa));
+  const bar = $('#subagentBar');
+  if (!sa) { bar.hidden = true; bar.innerHTML = ''; return; }
+  const running = sa.status === 'running' || sa.status === 'queued';
+  const label = { queued: 'waiting for a free slot', running: 'working', done: 'finished', failed: 'failed', stopped: 'stopped' }[sa.status] || sa.status;
+  bar.hidden = false;
+  bar.innerHTML = `<span class="sa-text">${icon('sparkles', 13)} Sub-agent <strong>${escapeHtml(sa.role || '')}</strong> — ${escapeHtml(label)}${sa.parentTitle ? ` · started by “${escapeHtml(sa.parentTitle)}”` : ''}</span>
+    ${sa.parentId ? '<button class="btn sm" data-act="parent">Open main chat</button>' : ''}
+    ${running && data.activeTurn ? '<button class="btn danger sm" data-act="stop">Stop</button>' : ''}`;
+  bar.querySelector('[data-act="parent"]')?.addEventListener('click', () => switchSession(sa.parentId));
+  bar.querySelector('[data-act="stop"]')?.addEventListener('click', async () => {
+    await fetch('/api/chat/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestId: data.activeTurn.requestId }) }).catch(() => {});
+    showToast('Stopping the sub-agent…');
+  });
+}
+// The task a sub-agent was given (top of its chat), and the reports that came back to the main chat.
+function addAgentCard(m) {
+  const wrap = document.createElement('div');
+  wrap.className = 'agent-card';
+  const card = document.createElement('div');
+  wrap.appendChild(card);
+  const md = (t) => (window.renderMarkdown ? window.renderMarkdown(t) : escapeHtml(t));
+  if (m.fromAgent === 'reports') {
+    const list = m.reports || [];
+    card.innerHTML = `<div class="ac-head">${icon('sparkles', 12)}<span>Sub-agent report${list.length > 1 ? 's' : ''} came back</span></div>
+      <div class="ac-links"></div>
+      <details><summary>Show the reports</summary><div class="ac-body msg-body"></div></details>`;
+    for (const r of list) {
+      const b = document.createElement('button');
+      b.className = 'btn sm';
+      b.textContent = `↳ ${r.role}${r.status && r.status !== 'done' ? ` (${r.status})` : ''}`;
+      b.title = 'Open its chat';
+      b.onclick = () => switchSession(r.chat);
+      card.querySelector('.ac-links').appendChild(b);
+    }
+    const text = String(m.content || '').replace(/<\/?subagent_reports>/g, '').replace(/<report role="([^"]*)"[^>]*>/g, '\n**$1**\n\n').replace(/<\/report>/g, '').replace(/\n?The sub-agents? you started finished[\s\S]*$/, '').trim();
+    card.querySelector('.ac-body').innerHTML = md(text);
+  } else {
+    card.innerHTML = `<div class="ac-head">${icon('sparkles', 12)}<span>Task from the main chat</span></div><div class="ac-body msg-body"></div>`;
+    card.querySelector('.ac-body').innerHTML = md(String(m.content || ''));
+  }
+  if (m.ts) wrap.dataset.ts = m.ts;
+  messagesEl.appendChild(wrap);
+  return wrap;
 }
 
 const sessUi = { renamingId: null, dragging: false, pinned: [], suppressClick: 0 };
@@ -2795,7 +2855,17 @@ async function loadSessions({ force = false } = {}) {
     sessUi.pinned = (data.pinned || []).filter((id) => byId.has(id));
     const pinnedSet = new Set(sessUi.pinned);
     const runningSet = new Set(data.running || []); // chats with a reply in progress
-    const ordered = [...sessUi.pinned.map((id) => byId.get(id)), ...sessions.filter((s) => !pinnedSet.has(s.id))];
+    // Sub-agent chats sit right under the chat that started them (newest first); orphans stay in the list as usual.
+    const kids = new Map();
+    for (const s of sessions) {
+      const p = s.subagent?.parentId;
+      if (p && byId.has(p) && p !== s.id) { if (!kids.has(p)) kids.set(p, []); kids.get(p).push(s); }
+    }
+    const isKid = (s) => Boolean(s.subagent?.parentId && kids.get(s.subagent.parentId)?.includes(s));
+    const withKids = (list) => list.flatMap((s) => [s, ...(kids.get(s.id) || [])]);
+    sessUi.pinned = sessUi.pinned.filter((id) => !isKid(byId.get(id)));
+    const pinnedBlock = withKids(sessUi.pinned.map((id) => byId.get(id)));
+    const ordered = [...pinnedBlock, ...withKids(sessions.filter((s) => !pinnedSet.has(s.id) && !isKid(s)))];
     if (!list.dataset.touchGuard) {
       list.dataset.touchGuard = '1';
       // Once a long-press drag has started, stop the list (and page) from scrolling under the finger.
@@ -2805,14 +2875,14 @@ async function loadSessions({ force = false } = {}) {
     list.classList.toggle('has-pins', sessUi.pinned.length > 0);
     ordered.forEach((s, i) => {
       const pinned = pinnedSet.has(s.id);
-      if (i === sessUi.pinned.length) {
+      if (i === pinnedBlock.length) {
         const sep = document.createElement('div');
         sep.className = 'sess-sep';
         sep.innerHTML = '<span>Drop above to pin</span>';
         list.appendChild(sep);
       }
       const row = document.createElement('div');
-      row.className = 'session-item' + (s.id === currentSessionId ? ' active' : '') + (pinned ? ' pinned' : '') + (runningSet.has(s.id) ? ' running' : '');
+      row.className = 'session-item' + (s.id === currentSessionId ? ' active' : '') + (pinned ? ' pinned' : '') + (runningSet.has(s.id) ? ' running' : '') + (s.subagent ? ` sub st-${s.subagent.status || ''}` : '');
       row.dataset.id = s.id;
       const title = document.createElement('button');
       title.className = 'title';
@@ -2836,11 +2906,11 @@ async function loadSessions({ force = false } = {}) {
       const del = act('close', 'Delete chat', 'del', async () => {
         await fetch(`/api/sessions/${s.id}`, { method: 'DELETE' });
       });
-      row.append(title, pinBtn, renBtn, del);
-      attachSessionDrag(row, list);
+      if (s.subagent) row.append(title, renBtn, del); // follows its main chat: not pinned or dragged on its own
+      else { row.append(title, pinBtn, renBtn, del); attachSessionDrag(row, list); }
       list.appendChild(row);
     });
-    if (sessUi.pinned.length === ordered.length) {
+    if (pinnedBlock.length === ordered.length) {
       const sep = document.createElement('div');
       sep.className = 'sess-sep';
       sep.innerHTML = '<span>Drop above to pin</span>';
@@ -2891,6 +2961,7 @@ async function loadConversation({ force = true, silent = false } = {}) {
     }
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
+    setSubagentView(data);
     const key = `${data.sessionId || ''}|${data.updatedAt || ''}|${(data.messages || []).length}`;
     if (!force && key === lastRenderedSessionKey) return false;
     if (!force) {
@@ -2943,6 +3014,9 @@ async function loadConversation({ force = true, silent = false } = {}) {
           wrap.appendChild(a);
         }
         messagesEl.appendChild(wrap);
+      } else if (m.role === 'user' && m.fromAgent) {
+        if (!m.cancelled) history.push({ role: 'user', content: m.content });
+        addAgentCard(m);
       } else if (m.role === 'user') {
         if (!m.cancelled) history.push({ role: 'user', content: m.content });
         const body = addMessage('user', m.content);
@@ -3080,6 +3154,7 @@ function connectEvents() {
       // a reply this tab is showing live (attached from another device): already on screen
       if (payload.role === 'assistant' && (attachedTurn || renderedConv.liveTail)) { loadSessions(); return; }
       history.push({ role: payload.role, content: payload.content });
+      if (payload.fromAgent) { addAgentCard(payload); scrollToLatest(); loadSessions(); return; }
       if (payload.role === 'assistant') {
         const bodyEl = addMessage('assistant', '');
         renderAssistantBody(bodyEl, payload.content);

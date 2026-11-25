@@ -898,6 +898,21 @@ html[data-look="plate"] .sess-sep span { background: var(--bg); }
 .mem-doc-md p { margin: 6px 0; }
 
 /* a chat with a reply in progress (possibly in another window) */
+/* sub-agent chats: nested under the chat that started them; no text box, a status bar instead */
+.session-item.sub { margin-left: 14px; font-size: .92em; }
+.session-item.sub.st-failed .title, .session-item.sub.st-stopped .title { opacity: .6; }
+body.is-subagent #composer, body.is-subagent #attachStrip { display: none !important; }
+.subagent-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; max-width: 860px; margin: 0 auto; width: 100%;
+  padding: 10px calc(14px + env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) calc(14px + env(safe-area-inset-left, 0px));
+  font-size: .84rem; color: var(--muted); border-top: 1px solid var(--border); }
+.subagent-bar .sa-text { flex: 1; min-width: 0; }
+.subagent-bar strong { color: var(--text); font-weight: 600; }
+.agent-card { max-width: 860px; margin: 6px auto 10px; width: 100%; padding: 0 14px; }
+.agent-card > div { border: 1px dashed var(--border); border-radius: 12px; padding: 10px 12px; font-size: .86rem; background: var(--panel); }
+.agent-card .ac-head { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 6px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.agent-card .ac-links { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0; }
+.agent-card details summary { cursor: pointer; color: var(--muted); font-size: .8rem; }
+.agent-card .ac-body { margin-top: 6px; }
 .session-item.running::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: sess-run 1.2s ease-in-out infinite; }
 @keyframes sess-run { 50% { opacity: .2; } }
 

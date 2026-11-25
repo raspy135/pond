@@ -75,7 +75,8 @@ import { ensureLlmConfig, getPublicLlmConfig, saveLlmConfig, resolveProfile, tes
 import { listSkills, getSkill, deleteSkill } from './lib/skills.js';
 import { readHtml } from './lib/htmlcache.js';
 import { serveShare, ensureShareDir, preparePage, isEmbed } from './lib/share.js';
-import { startTurn, pushTurnEvent, endTurn, getRunningTurn, attachTurn, getRunningSessionIds } from './lib/turns.js';
+import { startTurn, pushTurnEvent, endTurn, getRunningTurn, attachTurn, getRunningSessionIds, abortTurn } from './lib/turns.js';
+import { onSubagentReports, formatReports } from './lib/subagents.js';
 import { loadPlugins, listPlugins, setPluginEnabled, savePluginSettings, reloadPlugins, handlePluginRoute, getPluginUiState, takeFooters, emitEvent } from './lib/plugins.js';
 import { getVapid, saveSubscription, removeSubscription, listSubscriptions, pushToAllDevices } from './lib/push.js';
 import { resolveSessionProfile, buildSystemPrompt, buildChatMessages, prepareSessionChatTurn, saveChatImages, compactSession, estimateSessionTokens, buildLiveContext, streamChat, runAgentTurn } from './lib/llm.js';
@@ -94,6 +95,52 @@ registerSettingsReloadHook(() => startProactiveLoops());
 
 // Active streaming chat AbortControllers keyed by requestId (for explicit Stop button)
 const activeChatControllers = new Map();
+
+// A reply Pond starts by itself in a chat (no one typed): e.g. its sub-agents finished and their reports came back.
+// Runs like a normal reply — any open view of the chat attaches to it — and is saved to the chat.
+async function runBackgroundChatTurn(sessionId, text, extra = null) {
+  const session = await loadSession(sessionId);
+  if (!session) return;
+  if (!session.llm) session.llm = await defaultChatLlm();
+  const llm = await resolveSessionProfile(session);
+  if (!llm.keyConfigured) return;
+  const requestId = uid();
+  const messages = await prepareSessionChatTurn(session, text, { profile: llm, extra });
+  const userTs = session.messages[session.messages.length - 1]?.ts || null;
+  await touchSessionMeta(session);
+  broadcast({ type: 'message', sessionId, role: 'user', content: text, ...(extra || {}) });
+  broadcast({ type: 'sessions' });
+  const turn = startTurn({ sessionId, requestId });
+  const ctrl = new AbortController();
+  activeChatControllers.set(requestId, ctrl);
+  let recorded = [];
+  let reply = '';
+  try {
+    for await (const ev of streamChat(messages, { source: 'chat', signal: ctrl.signal, requestId, profile: llm, sessionId })) {
+      if (ev.type === 'record') { recorded = ev.entries || []; continue; }
+      if (ev.type === 'token') reply += ev.text;
+      pushTurnEvent(turn, ev);
+    }
+    await new Promise((r) => setImmediate(r));
+    const pluginFooters = takeFooters(requestId);
+    if (pluginFooters) {
+      const lastAssistant = [...recorded].reverse().find((e) => e.role === 'assistant' && String(e.content || '').trim());
+      if (lastAssistant) lastAssistant.pluginFooters = pluginFooters;
+    }
+    for (const entry of recorded) await appendToSession(sessionId, entry);
+    if (reply.trim()) broadcast({ type: 'message', sessionId, role: 'assistant', content: reply.trim() });
+  } catch (err) {
+    pushTurnEvent(turn, { type: 'error', message: String(err?.message || err) });
+  } finally {
+    activeChatControllers.delete(requestId);
+    if (ctrl.signal.aborted && userTs) { await markTurnCancelled(sessionId, userTs).catch(() => {}); broadcast({ type: 'sessions_updated', sessionId }); }
+    endTurn(turn, ctrl.signal.aborted ? 'stopped' : 'done');
+  }
+}
+onSubagentReports((parentId, reports) => runBackgroundChatTurn(parentId, formatReports(reports), {
+  fromAgent: 'reports',
+  reports: reports.map((r) => ({ role: r.role, status: r.status, chat: r.sessionId })),
+}));
 
 // ---------- HTTP helpers ----------
 function sendJson(res, status, obj) {
@@ -935,6 +982,7 @@ const server = http.createServer(async (req, res) => {
         updatedAt: session.updatedAt,
         messageCount: (session.messages || []).length,
         messages: session.messages,
+        ...(session.subagent ? { subagent: session.subagent } : {}),
       });
     }
     if (req.method === 'GET' && pathname === '/api/sessions') {
@@ -1095,6 +1143,7 @@ const server = http.createServer(async (req, res) => {
         activeChatControllers.delete(id);
         return sendJson(res, 200, { ok: true, stopped: true });
       }
+      if (id && abortTurn(id)) return sendJson(res, 200, { ok: true, stopped: true }); // a sub-agent's run
       return sendJson(res, 200, { ok: true, stopped: false });
     }
 
@@ -1113,6 +1162,7 @@ const server = http.createServer(async (req, res) => {
         if (!targetSession) targetSession = (await getActiveSession()).session;
         const running = getRunningTurn(targetSession.id);
         if (running) return sendJson(res, 409, { error: 'Pond is still replying in this chat — wait for it or press stop.', activeTurn: running });
+        if (targetSession.subagent) return sendJson(res, 400, { error: "This is a sub-agent's chat: it works on its own. Reply in the chat that started it." });
         // A chat keeps its own model from its first message on; later picks in other chats don't move it.
         if (!targetSession.llm) targetSession.llm = await defaultChatLlm();
       }
@@ -1163,7 +1213,7 @@ const server = http.createServer(async (req, res) => {
       const chatAbort = new AbortController();
       activeChatControllers.set(requestId, chatAbort);
       try {
-        for await (const event of streamChat(messages, { source: 'chat', signal: chatAbort.signal, requestId, profile: llm })) {
+        for await (const event of streamChat(messages, { source: 'chat', signal: chatAbort.signal, requestId, profile: llm, sessionId })) {
           if (event.type === 'record') {
             recordedEntries = event.entries || [];
             continue;
