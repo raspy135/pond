@@ -431,6 +431,101 @@ async function copyText(text, btn) {
   return true;
 }
 
+// ---------- Voice (public/voice.js): read aloud + dictation ----------
+let speakingBtn = null;
+function setSpeakingBtn(btn) {
+  if (speakingBtn && speakingBtn !== btn) { speakingBtn.classList.remove('speaking'); speakingBtn.innerHTML = icon('speaker', 13); speakingBtn.title = 'Read aloud'; }
+  speakingBtn = btn;
+  if (btn) { btn.classList.add('speaking'); btn.innerHTML = icon('stop', 13); btn.title = 'Stop reading'; }
+}
+function toggleSpeak(body, btn) {
+  const V = window.PondVoice;
+  if (!V) return;
+  if (speakingBtn === btn) { V.stop(); return; }
+  const text = body.dataset.rawText || body.textContent || '';
+  setSpeakingBtn(btn);
+  V.speak(text, { onEnd: () => { if (speakingBtn === btn) { btn.classList.remove('speaking'); btn.innerHTML = icon('speaker', 13); btn.title = 'Read aloud'; speakingBtn = null; } } });
+}
+// "Read replies aloud": a reply that finishes while you're looking at it is spoken.
+function autoReadReply(bodyEl, text) {
+  const V = window.PondVoice;
+  if (!V?.ttsSupported || !V.settings.autoRead || document.visibilityState !== 'visible' || !String(text || '').trim()) return;
+  const btn = bodyEl?.closest('.msg-row')?.querySelector('.msg-speak-btn');
+  if (btn) toggleSpeak(bodyEl, btn);
+  else V.speak(text);
+}
+
+let dictation = null;
+const micBtn = $('#micBtn');
+function setMicIdle() {
+  micBtn.classList.remove('listening');
+  micBtn.title = 'Dictate (speak to type)';
+  micBtn.setAttribute('aria-label', 'Dictate');
+  micBtn.innerHTML = icon('mic', 19);
+}
+if (window.PondVoice?.sttSupported) {
+  micBtn.hidden = false;
+  setMicIdle();
+  micBtn.addEventListener('click', () => {
+    if (dictation) { dictation.stop(); return; }
+    if (speakingBtn) window.PondVoice.stop();
+    const base = input.value;
+    const join = (t) => (base && t && !/\s$/.test(base) ? `${base} ${t}` : `${base}${t}`);
+    dictation = window.PondVoice.dictate({
+      onText: (finalText, interim) => { input.value = join(finalText + interim); autoGrowInput(); syncSendBtn(); },
+      onEnd: (finalText) => { input.value = join(finalText); autoGrowInput(); syncSendBtn(); dictation = null; setMicIdle(); input.focus(); },
+      onError: (err) => {
+        showToast(err === 'not-allowed' || err === 'service-not-allowed' ? 'Microphone access was blocked — allow it in the browser’s site settings.' : `Dictation error: ${err}`);
+      },
+    });
+    if (!dictation) { showToast('Dictation could not start in this browser.'); return; }
+    micBtn.classList.add('listening');
+    micBtn.title = 'Stop dictation';
+    micBtn.setAttribute('aria-label', 'Stop dictation');
+    micBtn.innerHTML = icon('stop', 17);
+  });
+}
+
+// Agent Hub → Appearance → Voice (this device only).
+function loadVoicePanel() {
+  const el = $('#hubVoice');
+  const V = window.PondVoice;
+  if (!el) return;
+  if (!V || (!V.ttsSupported && !V.sttSupported)) { el.innerHTML = '<div class="card-meta">This browser has no built-in speech.</div>'; return; }
+  const s = V.settings;
+  const all = V.voices().slice().sort((a, b) => a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name));
+  const opt = (v) => `<option value="${escapeHtml(v.voiceURI)}"${s.voice === v.voiceURI ? ' selected' : ''}>${escapeHtml(v.name)} — ${escapeHtml(v.lang)}${/natural/i.test(v.name) ? ' ★' : ''}</option>`;
+  const langs = [['', `Browser language (${navigator.language || 'en-US'})`], ['ja-JP', '日本語 (ja-JP)'], ['en-US', 'English (en-US)'], ['en-GB', 'English (en-GB)']];
+  el.innerHTML = `<div class="voice-card">
+    ${V.ttsSupported ? `
+    <label>Voice for reading replies
+      <select data-k="voice"><option value="">Automatic — best voice for each sentence's language${all.length ? '' : ' (loading voices…)'}</option>${all.map(opt).join('')}</select>
+    </label>
+    <label>Speed <span class="card-meta" data-out="rate">${Number(s.rate).toFixed(2)}×</span>
+      <input type="range" min="0.6" max="1.8" step="0.05" value="${Number(s.rate)}" data-k="rate">
+    </label>
+    <label class="check"><input type="checkbox" data-k="autoRead"${s.autoRead ? ' checked' : ''}> Read replies aloud automatically when they finish</label>
+    <div class="row"><button class="btn sm" data-act="test">Test voice</button><span class="card-meta">★ = natural (neural) voice. Edge's natural voices need an internet connection.</span></div>` : '<div class="card-meta">This browser cannot read text aloud.</div>'}
+    ${V.sttSupported ? `
+    <label>Dictation language
+      <select data-k="sttLang">${langs.map(([v, t]) => `<option value="${v}"${(s.sttLang || '') === v ? ' selected' : ''}>${escapeHtml(t)}</option>`).join('')}</select>
+    </label>
+    <div class="card-meta">Use the 🎤 button next to the message box. Dictation uses the browser's online speech service (Microsoft's in Edge, Google's in Chrome, Apple's in Safari), so your voice leaves your network.</div>` : '<div class="card-meta">This browser has no built-in dictation — use your keyboard\'s voice input instead.</div>'}
+  </div>`;
+  el.querySelectorAll('[data-k]').forEach((inp) => {
+    inp.addEventListener(inp.type === 'range' ? 'input' : 'change', () => {
+      const k = inp.dataset.k;
+      s[k] = inp.type === 'checkbox' ? inp.checked : inp.type === 'range' ? Number(inp.value) : inp.value;
+      if (k === 'rate') el.querySelector('[data-out="rate"]').textContent = `${Number(s.rate).toFixed(2)}×`;
+      V.save();
+    });
+  });
+  el.querySelector('[data-act="test"]')?.addEventListener('click', () => {
+    V.speak(/^ja/i.test(navigator.language) || /^ja/i.test(s.sttLang || '') ? 'こんにちは、Pondです。この声で返事を読み上げます。' : "Hi, I'm Pond. This is how I'll read my replies.");
+  });
+}
+window.PondVoice?.onVoicesChanged(() => { if (!$('#hubModal').hidden) loadVoicePanel(); });
+
 // ---------- Chat UI ----------
 // ---------- HTML previews size themselves to their content (message from the sandboxed iframe) ----------
 addEventListener('message', (e) => {
@@ -683,6 +778,16 @@ function addMessage(role, text, { proactive = false, tag = '' } = {}) {
   copyBtn.innerHTML = icon('copy', 13);
   copyBtn.onclick = () => copyText(body.dataset.rawText || body.textContent || '', copyBtn);
   actions.appendChild(copyBtn);
+  if (role === 'assistant' && window.PondVoice?.ttsSupported) {
+    const sp = document.createElement('button');
+    sp.type = 'button';
+    sp.className = 'msg-copy-btn msg-speak-btn';
+    sp.title = 'Read aloud';
+    sp.setAttribute('aria-label', 'Read aloud');
+    sp.innerHTML = icon('speaker', 13);
+    sp.onclick = () => toggleSpeak(body, sp);
+    actions.appendChild(sp);
+  }
   if (proactive && role === 'assistant') {
     // Talk about a check-in / alert in its own chat, so replying doesn't pull the current conversation off course.
     const br = document.createElement('button');
@@ -970,7 +1075,7 @@ function createTurnView({ startedAt = Date.now() } = {}) {
     if (v.thoughtEl) v.thoughtEl.querySelector('.thought-label').textContent = 'Thought';
     if (notice) bubbleBody.innerHTML = `<span class="inline-icon-text">${icon('refresh', 14)}<span>${escapeHtml(notice)}</span></span>`;
     else if (stopped) { if (v.acc) renderAssistantBody(bubbleBody, `${v.acc}\n\n*(stopped)*`); else bubbleBody.textContent = '(stopped)'; }
-    else if (v.acc) renderAssistantBody(bubbleBody, v.acc);
+    else if (v.acc) { renderAssistantBody(bubbleBody, v.acc); autoReadReply(bubbleBody, v.acc); }
     else if (!msgRow.classList.contains('error')) bubbleBody.textContent = '(no response)';
     setMood(msgRow, msgRow.classList.contains('error') ? 'sad' : stopped ? 'sleepy' : 'happy');
     if (msgRow.isConnected) scrollToLatest(); // the final render can change height
@@ -2457,6 +2562,7 @@ async function loadHubData() {
   loadSkillsPanel();
   loadPluginsPanel();
   loadAppearancePanel();
+  loadVoicePanel();
   loadPersonaPanel();
 
   // Artifacts & Activity tab

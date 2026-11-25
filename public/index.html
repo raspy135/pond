@@ -151,6 +151,7 @@
         </button>
         <input id="attachInput" type="file" accept="image/*" multiple hidden />
         <textarea id="input" rows="1" placeholder=""></textarea>
+        <button id="micBtn" type="button" aria-label="Dictate" title="Dictate (speak to type)" hidden></button>
         <button id="sendBtn" type="submit" aria-label="Send">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5.5 11.5 6.5-6.5 6.5 6.5"/></svg>
         </button>
@@ -716,6 +717,9 @@
           <div id="hubPersona" style="margin-bottom:18px"></div>
           <div class="card-meta" style="margin-bottom:8px;">Character and color are saved on the server — every device shows the same.</div>
           <div id="hubAppearance"></div>
+          <div class="section-sub" style="margin-top:18px">Voice</div>
+          <div class="card-meta" style="margin-bottom:8px;">Read replies aloud and speak to type, using this browser's own speech. Saved on this device only.</div>
+          <div id="hubVoice"></div>
         </section>
         <section class="tab-panel" data-panel="plugins">
           <div class="section-sub" style="display:flex;justify-content:space-between;align-items:center;">
@@ -743,6 +747,7 @@
   <script src="/icons.js"></script>
   <script src="/markdown.js"></script>
   <script src="/mascot.js"></script>
+  <script src="/voice.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>
