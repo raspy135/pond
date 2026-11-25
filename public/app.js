@@ -2456,7 +2456,7 @@ async function loadHubData() {
     c.innerHTML = `
       <div class="card-top"><span class="inline-icon-text">${icon('layout', 14)}<span>${escapeHtml(a.title)}</span></span><span class="pill">${escapeHtml(a.type)}</span></div>
       <div class="btn-group">
-        <a class="btn primary sm" href="${escapeHtml(a.url)}" target="_blank" rel="noopener">Open</a>
+        <a class="btn primary sm" href="${escapeHtml((a.type === 'html' && window.pondAppUrl?.(a.url)) || a.url)}" target="_blank" rel="noopener" title="Opens in your browser — install it from there to get it as an app">Open</a>
         <button class="btn danger sm" data-act="del">Delete</button>
       </div>
     `;

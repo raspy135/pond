@@ -90,6 +90,22 @@ ${user}
   }
 
   // The installed app opens pages in a window with no address bar — this is how to get a page's link.
+  // A saved page (artifact or Pond Share .html) opens as an app of its own: /apps/<key>/ — outside Pond's app scope,
+  // so it opens in the browser with a real address, and the browser can install it (see lib/apps.js).
+  const appUrl = (url) => {
+    const u = String(url || '').split(/[?#]/)[0];
+    let m = u.match(/^\/artifacts\/([A-Za-z0-9_-]+)$/);
+    if (m) return `/apps/a-${m[1]}/`;
+    m = u.match(/^\/share\/(.+\.html?)$/i);
+    if (m) {
+      try {
+        const b = btoa(unescape(encodeURIComponent(decodeURIComponent(m[1])))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        return `/apps/s-${b}/`;
+      } catch { return null; }
+    }
+    return null;
+  };
+  if (typeof window !== 'undefined') window.pondAppUrl = appUrl;
   const copyLinkBtn = (url) => `<button type="button" class="artifact-btn" data-act="copy-link" data-url="${esc(url)}" title="Copy this page's link">Copy link</button>`;
   const esc = (s) =>
     String(s)
@@ -183,7 +199,8 @@ ${user}
     const title = (mm[1] || '').trim() || name;
     const ext = (/\.([a-z0-9]+)$/i.exec(url.split('?')[0]) || [])[1]?.toLowerCase() || '';
     const u = esc(url);
-    const open = `${copyLinkBtn(url)}<a class="artifact-btn" href="${u}" target="_blank" rel="noopener" title="Open full page">Open ↗</a>`;
+    const app = appUrl(url);
+    const open = `${copyLinkBtn(app || url)}<a class="artifact-btn" href="${esc(app || url)}" target="_blank" rel="noopener" title="${app ? 'Open in your browser — install it from there to get it as an app' : 'Open full page'}">Open ↗</a>`;
     if (/^(png|jpe?g|gif|webp|svg|avif)$/.test(ext)) {
       return `<figure class="embed-img"><a href="${u}" target="_blank" rel="noopener"><img src="${u}" alt="${esc(title)}" loading="lazy"></a>${mm[1] ? `<figcaption>${esc(title)}</figcaption>` : ''}</figure>`;
     }

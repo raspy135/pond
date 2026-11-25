@@ -69,6 +69,7 @@ import {
 } from './lib/mcp.js';
 import { listArtifacts, getArtifact, deleteArtifact, registerSettingsReloadHook } from './lib/tools.js';
 import { playwrightEntry, EXTENSION_TOKEN_ENV } from './lib/browser-setup.js';
+import { handleAppRoute } from './lib/apps.js';
 import { webSearch, activeSearchBackend } from './lib/web.js';
 import { detectPython, resolveRunFile } from './lib/python.js';
 import { ensureLlmConfig, getPublicLlmConfig, saveLlmConfig, resolveProfile, testLlmProfile, setActiveLlm, defaultChatLlm, normEffort } from './lib/llm-config.js';
@@ -202,7 +203,10 @@ const MIME = {
 
 async function serveStatic(req, res, pathname) {
   let rel = decodeURIComponent(pathname);
-  if (rel === '/') rel = '/index.html';
+  // The app lives at /app/ (its install scope), so pages Pond makes (/artifacts, /share, /apps) open in the browser.
+  if (rel === '/') { const q = (req.url || '').indexOf('?'); res.writeHead(302, { Location: `/app/${q >= 0 ? req.url.slice(q) : ''}` }); return res.end(); }
+  if (rel === '/app') { res.writeHead(301, { Location: '/app/' }); return res.end(); }
+  if (rel === '/app/') rel = '/index.html';
   const filePath = path.normalize(path.join(PUBLIC, rel));
   if (!filePath.startsWith(PUBLIC)) {
     res.writeHead(403);
@@ -864,6 +868,8 @@ const server = http.createServer(async (req, res) => {
       }
       return res.end(preparePage(h.content, { embed: isEmbed(req) }));
     }
+    // A Pond page as an app of its own (installable from the browser): /apps/<key>/
+    if (req.method === 'GET' && pathname.startsWith('/apps/') && await handleAppRoute(req, res, pathname)) return;
     const artifactViewMatch = pathname.match(/^\/artifacts\/([A-Za-z0-9_-]+)$/);
     if (req.method === 'GET' && artifactViewMatch) {
       const a = await getArtifact(artifactViewMatch[1]);

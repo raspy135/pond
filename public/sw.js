@@ -1,6 +1,6 @@
 // Pond service worker — app-shell caching, network-first for API, rich desktop/PWA notifications.
-const CACHE = 'pond-shell-v108';
-const SHELL = ['/', '/index.html', '/styles.css', '/icons.js', '/app.js', '/manifest.webmanifest', '/icons/icon.svg', '/icons/icon-192.png', '/markdown.js', '/mascot.js'];
+const CACHE = 'pond-shell-v109';
+const SHELL = ['/app/', '/index.html', '/styles.css', '/icons.js', '/app.js', '/manifest.webmanifest', '/icons/icon.svg', '/icons/icon-192.png', '/markdown.js', '/mascot.js'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -17,7 +17,7 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/artifacts/') || url.pathname.startsWith('/files/') || url.pathname.startsWith('/share/') || url.pathname.startsWith('/html/')) return;
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/artifacts/') || url.pathname.startsWith('/files/') || url.pathname.startsWith('/share/') || url.pathname.startsWith('/html/') || url.pathname.startsWith('/apps/') || url.pathname === '/') return;
   if (event.request.method !== 'GET') return;
 
   event.respondWith(
@@ -53,7 +53,7 @@ self.addEventListener('notificationclick', (event) => {
       const q = new URLSearchParams();
       if (data.id) q.set('notif', data.id);
       if (data.sessionId) q.set('session', data.sessionId);
-      await self.clients.openWindow(`/${q.toString() ? `?${q}` : ''}`);
+      await self.clients.openWindow(`/app/${q.toString() ? `?${q}` : ''}`);
     }
   })());
 });
