@@ -899,7 +899,7 @@ html[data-look="plate"] .sess-sep span { background: var(--bg); }
 
 /* a chat with a reply in progress (possibly in another window) */
 /* sub-agent chats: nested under the chat that started them; no text box, a status bar instead */
-.session-item.sub { margin-left: 14px; font-size: .92em; }
+.session-item.sub { margin-left: 14px; width: calc(100% - 14px); min-width: 0; font-size: .92em; }
 .session-item.sub.st-failed .title, .session-item.sub.st-stopped .title { opacity: .6; }
 body.is-subagent #composer, body.is-subagent #attachStrip { display: none !important; }
 .subagent-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; max-width: 860px; margin: 0 auto; width: 100%;
