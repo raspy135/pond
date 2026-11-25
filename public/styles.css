@@ -911,6 +911,9 @@ body.is-subagent #composer, body.is-subagent #attachStrip { display: none !impor
 .msg-row.user.injected.pending .bubble { opacity: .6; }
 .injected-note { font-size: .72rem; color: var(--muted); text-align: right; margin-top: 3px; }
 #sendBtn.is-add { box-shadow: 0 0 0 3px var(--accent-soft, rgba(0,0,0,.08)); }
+.math-display { overflow-x: auto; overflow-y: hidden; margin: 6px 0; max-width: 100%; }
+.math-display .katex-display { margin: .4em 0; }
+.math-pending, .math-streaming { font-family: ui-monospace, Consolas, monospace; font-size: .88em; color: var(--muted); white-space: pre-wrap; }
 .agent-card { max-width: 860px; margin: 6px auto 10px; width: 100%; padding: 0 14px; }
 .agent-card > div { border: 1px dashed var(--border); border-radius: 12px; padding: 10px 12px; font-size: .86rem; background: var(--panel); }
 .agent-card .ac-head { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 6px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

@@ -150,10 +150,64 @@ ${user}
       .join('');
   }
 
+  // ---------- Math (LaTeX): $…$ / \(…\) inline, $$…$$ / \[…\] as a block — rendered with KaTeX ----------
+  // KaTeX (public/vendor/katex, ~270 KB + fonts) loads the first time a message has math. Until then the formula shows
+  // as its source in a placeholder, which is typeset as soon as KaTeX is ready.
+  let katexState = typeof window !== 'undefined' && window.katex ? 'ready' : 'none';
+  function loadKatex() {
+    if (katexState !== 'none' || typeof document === 'undefined') return;
+    katexState = 'loading';
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = '/vendor/katex/katex.min.css';
+    document.head.appendChild(css);
+    const js = document.createElement('script');
+    js.src = '/vendor/katex/katex.min.js';
+    js.onload = () => { katexState = 'ready'; typesetMath(document); };
+    js.onerror = () => { katexState = 'failed'; };
+    document.head.appendChild(js);
+  }
+  function mathHtml(tex, display) {
+    if (katexState === 'ready' && window.katex) {
+      try {
+        return window.katex.renderToString(tex, { displayMode: display, throwOnError: false, strict: 'ignore', output: 'htmlAndMathml' });
+      } catch { /* fall through to the source */ }
+    }
+    loadKatex();
+    const tag = display ? 'div' : 'span';
+    return `<${tag} class="math-pending${display ? ' math-block' : ''}" data-tex="${esc(tex)}">${esc(display ? `$$${tex}$$` : `$${tex}$`)}</${tag}>`;
+  }
+  function typesetMath(root) {
+    if (katexState !== 'ready' || !window.katex) return;
+    for (const el of root.querySelectorAll('.math-pending')) {
+      const display = el.classList.contains('math-block');
+      try {
+        const html = window.katex.renderToString(el.dataset.tex || '', { displayMode: display, throwOnError: false, strict: 'ignore', output: 'htmlAndMathml' });
+        const box = document.createElement(display ? 'div' : 'span');
+        if (display) box.className = 'math-display';
+        box.innerHTML = html;
+        el.replaceWith(box);
+      } catch { el.classList.remove('math-pending'); }
+    }
+  }
+  if (typeof window !== 'undefined') window.pondTypesetMath = typesetMath;
+
+  // Inline math, pandoc-style: $x$ needs a non-space right after the opening $ and right before the closing $, and
+  // no digit right after it — so prices ("$5 and $10") stay plain text. \$ is a literal dollar sign.
+  const INLINE_MATH = /\\\((.+?)\\\)|\$\$([^$\n]+?)\$\$|(?<![\\$\w])\$(?!\s)([^$\n]*?[^\s\\])\$(?![\d$\w])/g;
+
   function inline(text) {
-    let s = esc(text);
-    // inline code
-    s = s.replace(/`([^`\n]+)`/g, (_, c) => `<code>${c}</code>`);
+    // Code spans and math are cut out first (so * _ ~ inside them aren't treated as formatting) and put back last.
+    const keep = [];
+    const hold = (html) => `\u0010${keep.push(html) - 1}\u0011`;
+    let raw = String(text).replace(/`([^`\n]+)`/g, (_, c) => hold(`<code>${esc(c)}</code>`));
+    raw = raw.replace(INLINE_MATH, (m, paren, dbl, single) => {
+      const tex = paren ?? dbl ?? single;
+      if (!tex || !tex.trim()) return m;
+      return hold(`<span class="math-inline">${mathHtml(tex.trim(), dbl !== undefined && dbl !== null)}</span>`);
+    });
+    raw = raw.replace(/\\\$/g, '$');
+    let s = esc(raw);
     // images
     s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt, url) => {
       const u = safeUrl(url, { allowDataImage: true });
@@ -172,6 +226,7 @@ ${user}
     s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
     s = s.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+    if (keep.length) s = s.replace(/\u0010(\d+)\u0011/g, (_, n) => keep[Number(n)] ?? '');
     return s;
   }
 
@@ -259,6 +314,30 @@ ${user}
           out.push(`<pre><code class="lang-${esc(lang)}">${esc(code)}</code></pre>`);
         }
         continue;
+      }
+
+      // display math: $$ … $$ or \[ … \] (on their own lines, or on one line)
+      const mOpen = line.match(/^\s*(\$\$|\\\[)(.*)$/);
+      if (mOpen) {
+        const close = mOpen[1] === '$$' ? '$$' : '\\]';
+        const first = mOpen[2];
+        const buf = [];
+        let closed = false;
+        const endAt = (str) => { const k = str.indexOf(close); return k; };
+        if (endAt(first) !== -1) { buf.push(first.slice(0, endAt(first))); closed = true; i++; }
+        else {
+          if (first.trim()) buf.push(first);
+          let j = i + 1;
+          while (j < lines.length && endAt(lines[j]) === -1) { buf.push(lines[j]); j++; }
+          if (j < lines.length) { buf.push(lines[j].slice(0, endAt(lines[j]))); closed = true; i = j + 1; }
+        }
+        if (closed && buf.join('').trim()) {
+          flushPara();
+          out.push(`<div class="math-display">${mathHtml(buf.join('\n').trim(), true)}</div>`);
+          continue;
+        }
+        if (!closed && streaming) { flushPara(); out.push(`<div class="math-display math-streaming">${esc(lines.slice(i).join('\n'))}</div>`); break; }
+        // not closed: plain text
       }
 
       // blank line

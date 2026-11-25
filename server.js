@@ -202,6 +202,7 @@ const MIME = {
   '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   '.zip': 'application/zip',
+  '.woff2': 'font/woff2',
 };
 
 async function serveStatic(req, res, pathname) {
