@@ -807,6 +807,48 @@ function addToolTrace(name, args, result) {
 
 let activeChatAbort = null;
 
+// While Pond works, the button stops it — or, once you've typed something, adds that to the running reply.
+function syncSendBtn() {
+  if (!busy) return;
+  const add = Boolean(input.value.trim()) && attachedTurn?.sessionId === currentSessionId;
+  if (sendBtn.dataset.mode === (add ? 'add' : 'stop')) return;
+  sendBtn.dataset.mode = add ? 'add' : 'stop';
+  sendBtn.classList.toggle('is-stop', !add);
+  sendBtn.classList.toggle('is-add', add);
+  sendBtn.title = add ? 'Add to the running reply — Pond reads it at its next step' : 'Stop generation';
+  sendBtn.setAttribute('aria-label', sendBtn.title);
+  sendBtn.innerHTML = add ? icon('send', 19) : icon('stop', 18);
+}
+function addInjectedRow(text, { pending = false } = {}) {
+  const body = addMessage('user', text);
+  const row = body.closest('.msg-row');
+  row.classList.add('injected');
+  if (pending) { row.classList.add('pending'); row.dataset.text = text; }
+  const note = document.createElement('div');
+  note.className = 'injected-note';
+  note.textContent = pending ? 'Pond will read this at its next step' : 'Added while Pond was working';
+  body.closest('.msg-col').appendChild(note);
+  if (pending) scrollToLatest(true);
+  return row;
+}
+async function injectMessage(text) {
+  const t = text.trim();
+  if (!t) return;
+  input.value = '';
+  autoGrowInput();
+  syncSendBtn();
+  const row = addInjectedRow(t, { pending: true });
+  const r = await fetch('/api/chat/inject', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: currentSessionId, text: t }) })
+    .then((x) => x.json().then((j) => ({ status: x.status, ...j }))).catch(() => ({ status: 0 }));
+  if (r.ok) return;
+  row.remove();
+  if (r.notRunning) { // the reply just ended: send it as a normal message
+    const wait = Date.now() + 5000;
+    while (busy && Date.now() < wait) await new Promise((res) => setTimeout(res, 150));
+    sendMessage(t);
+  } else { input.value = t; autoGrowInput(); showToast(r.error || 'Could not send'); }
+}
+
 function setBusy(v) {
   busy = v;
   if (v) {
@@ -815,7 +857,11 @@ function setBusy(v) {
     sendBtn.title = 'Stop generation';
     sendBtn.setAttribute('aria-label', 'Stop generation');
     sendBtn.innerHTML = icon('stop', 18);
+    sendBtn.dataset.mode = 'stop';
+    syncSendBtn();
   } else {
+    sendBtn.dataset.mode = '';
+    sendBtn.classList.remove('is-add');
     activeChatAbort = null;
     sendBtn.disabled = false;
     sendBtn.classList.remove('is-stop');
@@ -832,13 +878,18 @@ function setBusy(v) {
 let attachedTurn = null; // { requestId, sessionId, view, abort, detached, stopRequested }
 
 function createTurnView({ startedAt = Date.now() } = {}) {
-  const bubbleBody = addMessage('assistant', '');
-  const msgRow = bubbleBody.closest('.msg-row');
-  const bubbleEl = bubbleBody.closest('.bubble');
-  msgRow.classList.add('is-working');
-  setMood(msgRow, 'thinking');
-  const workingEl = createWorkingIndicator('Thinking…');
-  bubbleEl.insertBefore(workingEl, bubbleBody);
+  let bubbleBody, msgRow, bubbleEl, workingEl;
+  const newBubble = () => {
+    bubbleBody = addMessage('assistant', '');
+    msgRow = bubbleBody.closest('.msg-row');
+    bubbleEl = bubbleBody.closest('.bubble');
+    msgRow.classList.add('is-working');
+    setMood(msgRow, 'thinking');
+    workingEl = createWorkingIndicator('Thinking…');
+    bubbleEl.insertBefore(workingEl, bubbleBody);
+    bubbleBody.classList.add('streaming');
+  };
+  newBubble();
   let baseWorkLabel = 'Thinking…';
   const refreshWorkText = () => {
     const secs = Math.floor((Date.now() - startedAt) / 1000);
@@ -847,7 +898,6 @@ function createTurnView({ startedAt = Date.now() } = {}) {
   };
   const setWorkingLabel = (txt) => { baseWorkLabel = txt; refreshWorkText(); };
   const workTicker = setInterval(refreshWorkText, 1000);
-  bubbleBody.classList.add('streaming');
 
   const v = { bubbleBody, msgRow, acc: '', thoughtAcc: '', thoughtEl: null, hadToolSinceText: false, finished: false };
   const follow = () => { if (msgRow.isConnected) scrollToLatest(); };
@@ -888,6 +938,23 @@ function createTurnView({ startedAt = Date.now() } = {}) {
       setWorkingLabel('Thinking…');
       if (msgRow.isConnected) addToolTrace(payload.name, payload.args, payload.result);
       refreshState();
+    } else if (payload.type === 'injected') {
+      // A message the user added while this reply was running: close this bubble, show the message where the
+      // model read it, and carry on in a new bubble below it.
+      if (v.mdTimer) { clearTimeout(v.mdTimer); v.mdTimer = null; }
+      workingEl.remove();
+      msgRow.classList.remove('is-working');
+      if (v.acc) { renderAssistantBody(bubbleBody, v.acc); setMood(msgRow, 'happy'); }
+      else if (!v.thoughtEl) msgRow.remove();
+      else bubbleBody.remove();
+      [...messagesEl.querySelectorAll('.msg-row.injected.pending')].find((r) => r.dataset.text === payload.text)?.remove();
+      addInjectedRow(payload.text);
+      newBubble();
+      Object.assign(v, { bubbleBody, msgRow, acc: '', thoughtAcc: '', thoughtEl: null, hadToolSinceText: false });
+      if (renderedConv.liveBody) renderedConv.liveBody = bubbleBody;
+      if (attachedTurn) bubbleByRequest.set(attachedTurn.requestId, bubbleBody); // footers go on the newest bubble
+      baseWorkLabel = 'Thinking…'; refreshWorkText();
+      follow();
     } else if (payload.type === 'error') {
       workingEl.remove();
       bubbleBody.innerHTML = `<span class="inline-icon-text">${icon('alert', 14)}<span>${escapeHtml(payload.message)}</span></span>`;
@@ -3019,6 +3086,7 @@ async function loadConversation({ force = true, silent = false } = {}) {
         addAgentCard(m);
       } else if (m.role === 'user') {
         if (!m.cancelled) history.push({ role: 'user', content: m.content });
+        if (m.injected) { const r = addInjectedRow(m.content); if (m.ts) r.dataset.ts = m.ts; continue; }
         const body = addMessage('user', m.content);
         if (m.ts) body.closest('.msg-row').dataset.ts = m.ts;
         appendMessageImages(body, (m.images || []).map((i) => i.url));
@@ -3302,6 +3370,10 @@ composer.addEventListener('submit', (e) => {
   e.preventDefault();
   // A reply still attached from another chat must never be stopped by sending here: let go of it and send.
   if (attachedTurn && attachedTurn.sessionId !== currentSessionId) detachTurnView();
+  if (busy && activeChatAbort && input.value.trim() && attachedTurn && attachedTurn.sessionId === currentSessionId) {
+    injectMessage(input.value); // typed while Pond works: add it to the running reply instead of stopping it
+    return;
+  }
   if (busy && activeChatAbort) {
     if (attachedTurn) attachedTurn.stopRequested = true;
     if (activeRequestId) {
@@ -3363,7 +3435,7 @@ input.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowUp') { e.preventDefault(); slashIndex = (slashIndex - 1 + slashMatches.length) % slashMatches.length; renderSlashMenu(); return; }
     if (e.key === 'Escape') { e.preventDefault(); closeSlashMenu(); return; }
   }
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(input.value); }
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (busy && input.value.trim()) composer.requestSubmit(); else sendMessage(input.value); }
 });
 // Grow the composer with its content. box-sizing is border-box, so add the border back:
 // using scrollHeight alone left it 2px short and showed a scrollbar even for one line.
@@ -3376,6 +3448,7 @@ function autoGrowInput() {
 }
 input.addEventListener('input', () => {
   autoGrowInput();
+  syncSendBtn();
   if (input.value === '/') { slashIndex = 0; refreshSkillCache().then(renderSlashMenu); }
   renderSlashMenu();
 });

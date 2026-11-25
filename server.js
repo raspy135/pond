@@ -75,7 +75,7 @@ import { ensureLlmConfig, getPublicLlmConfig, saveLlmConfig, resolveProfile, tes
 import { listSkills, getSkill, deleteSkill } from './lib/skills.js';
 import { readHtml } from './lib/htmlcache.js';
 import { serveShare, ensureShareDir, preparePage, isEmbed } from './lib/share.js';
-import { startTurn, pushTurnEvent, endTurn, getRunningTurn, attachTurn, getRunningSessionIds, abortTurn } from './lib/turns.js';
+import { startTurn, pushTurnEvent, endTurn, getRunningTurn, attachTurn, getRunningSessionIds, abortTurn, queueInjection } from './lib/turns.js';
 import { onSubagentReports, formatReports, stopSubagent } from './lib/subagents.js';
 import { loadPlugins, listPlugins, setPluginEnabled, savePluginSettings, reloadPlugins, handlePluginRoute, getPluginUiState, takeFooters, emitEvent } from './lib/plugins.js';
 import { getVapid, saveSubscription, removeSubscription, listSubscriptions, pushToAllDevices } from './lib/push.js';
@@ -110,7 +110,7 @@ async function runBackgroundChatTurn(sessionId, text, extra = null) {
   await touchSessionMeta(session);
   broadcast({ type: 'message', sessionId, role: 'user', content: text, ...(extra || {}) });
   broadcast({ type: 'sessions' });
-  const turn = startTurn({ sessionId, requestId });
+  const turn = startTurn({ sessionId, requestId, acceptsInjections: true });
   const ctrl = new AbortController();
   activeChatControllers.set(requestId, ctrl);
   let recorded = [];
@@ -1136,6 +1136,16 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true });
     }
 
+    // Add a message to a reply that is still running: it reads it at its next step instead of being stopped.
+    if (req.method === 'POST' && pathname === '/api/chat/inject') {
+      const body = await readJsonBody(req);
+      const text = String(body.text || '').trim().slice(0, 20000);
+      if (!text) return sendJson(res, 400, { error: 'Nothing to send' });
+      const requestId = typeof body.sessionId === 'string' ? queueInjection(body.sessionId, text) : null;
+      if (!requestId) return sendJson(res, 409, { error: 'No reply is running in this chat', notRunning: true });
+      return sendJson(res, 200, { ok: true, requestId });
+    }
+
     // Explicit Stop endpoint so clicking Stop aborts immediately, while passive iPhone lock/disconnect lets Pond finish & save!
     if (req.method === 'POST' && pathname === '/api/chat/stop') {
       const body = await readJsonBody(req);
@@ -1207,7 +1217,7 @@ const server = http.createServer(async (req, res) => {
       }
       let assistantText = '';
       let recordedEntries = [];
-      const turn = sessionId ? startTurn({ sessionId, requestId, clientId }) : null; // lives on even if this tab goes away
+      const turn = sessionId ? startTurn({ sessionId, requestId, clientId, acceptsInjections: true }) : null; // lives on even if this tab goes away
       // Keepalive bytes so the client can tell a slow tool call from a dead connection.
       const streamKeepalive = setInterval(() => {
         if (!res.writableEnded && !res.destroyed) { try { res.write(': ka\n\n'); } catch { /* ignore */ } }
