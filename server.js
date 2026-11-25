@@ -18,6 +18,7 @@ import { markTurnCancelled,
   getActiveSession,
   appendToActiveSession,
   appendToSession,
+  setSessionUsage,
   touchSessionMeta,
   renameSession,
   getChatSession,
@@ -115,10 +116,11 @@ async function runBackgroundChatTurn(sessionId, text, extra = null) {
   const ctrl = new AbortController();
   activeChatControllers.set(requestId, ctrl);
   let recorded = [];
+  let measuredUsage = null;
   let reply = '';
   try {
     for await (const ev of streamChat(messages, { source: 'chat', signal: ctrl.signal, requestId, profile: llm, sessionId })) {
-      if (ev.type === 'record') { recorded = ev.entries || []; continue; }
+      if (ev.type === 'record') { recorded = ev.entries || []; measuredUsage = ev.measured || null; continue; }
       if (ev.type === 'token') reply += ev.text;
       pushTurnEvent(turn, ev);
     }
@@ -129,6 +131,7 @@ async function runBackgroundChatTurn(sessionId, text, extra = null) {
       if (lastAssistant) lastAssistant.pluginFooters = pluginFooters;
     }
     for (const entry of recorded) await appendToSession(sessionId, entry);
+    if (measuredUsage) await setSessionUsage(sessionId, measuredUsage);
     if (reply.trim()) broadcast({ type: 'message', sessionId, role: 'assistant', content: reply.trim() });
   } catch (err) {
     pushTurnEvent(turn, { type: 'error', message: String(err?.message || err) });
@@ -316,9 +319,9 @@ const server = http.createServer(async (req, res) => {
 
       const activeEmails = (emailStore.items || []).filter((e) => !e.dismissed);
       const importantEmails = activeEmails.filter((e) => e.importance?.important).slice(0, 15);
-      const sessionTokens = estimateSessionTokens(activeSessWrap.session);
       // the model shown is the one THIS chat uses (its own pick, else the default)
       const chatLlm = activeSessWrap.session?.llm ? await resolveSessionProfile(activeSessWrap.session) : llm;
+      const sessionTokens = estimateSessionTokens(activeSessWrap.session, { profileKey: chatLlm.profileKey });
       return sendJson(res, 200, {
         assistantName: CONFIG.assistantName,
         ui: CONFIG.ui,
@@ -1223,6 +1226,7 @@ const server = http.createServer(async (req, res) => {
       }
       let assistantText = '';
       let recordedEntries = [];
+      let measuredUsage = null;
       const turn = sessionId ? startTurn({ sessionId, requestId, clientId, acceptsInjections: true }) : null; // lives on even if this tab goes away
       // Keepalive bytes so the client can tell a slow tool call from a dead connection.
       const streamKeepalive = setInterval(() => {
@@ -1234,6 +1238,7 @@ const server = http.createServer(async (req, res) => {
         for await (const event of streamChat(messages, { source: 'chat', signal: chatAbort.signal, requestId, profile: llm, sessionId })) {
           if (event.type === 'record') {
             recordedEntries = event.entries || [];
+            measuredUsage = event.measured || null;
             continue;
           }
           if (event.type === 'token') assistantText += event.text;
@@ -1255,6 +1260,7 @@ const server = http.createServer(async (req, res) => {
             lastSession = await appendToSession(sessionId, entry);
           }
           sessionId = lastSession?.id || sessionId;
+          if (measuredUsage && sessionId) await setSessionUsage(sessionId, measuredUsage);
           if (assistantText.trim()) {
             broadcast({ type: 'message', sessionId, role: 'assistant', content: assistantText.trim(), clientId });
           }
