@@ -68,6 +68,7 @@ import {
   shutdownMcpServers,
 } from './lib/mcp.js';
 import { listArtifacts, getArtifact, deleteArtifact, registerSettingsReloadHook } from './lib/tools.js';
+import { playwrightEntry, EXTENSION_TOKEN_ENV } from './lib/browser-setup.js';
 import { webSearch, activeSearchBackend } from './lib/web.js';
 import { detectPython, resolveRunFile } from './lib/python.js';
 import { ensureLlmConfig, getPublicLlmConfig, saveLlmConfig, resolveProfile, testLlmProfile, setActiveLlm, defaultChatLlm, normEffort } from './lib/llm-config.js';
@@ -656,6 +657,15 @@ const server = http.createServer(async (req, res) => {
       const body = await readJsonBody(req);
       const servers = await addMcpServer(body);
       return sendJson(res, 200, { ok: true, servers });
+    }
+    // Which browser the AI drives: Pond's own window, or your Chrome through the Playwright MCP Bridge extension.
+    if (req.method === 'POST' && pathname === '/api/browser/mode') {
+      const body = await readJsonBody(req);
+      const mode = body.mode === 'chrome' ? 'chrome' : 'own';
+      const prev = (await listMcpConfigs()).find((c) => c.name === 'browser');
+      const token = body.token !== undefined ? String(body.token || '') : (prev?.env?.[EXTENSION_TOKEN_ENV] || '');
+      const servers = await addMcpServer(playwrightEntry({ enabled: prev ? prev.enabled !== false : true, mode, token }));
+      return sendJson(res, 200, { ok: true, mode, servers });
     }
     const mcpReconnectMatch = pathname.match(/^\/api\/mcp\/([A-Za-z0-9_-]+)\/reconnect$/);
     if (req.method === 'POST' && mcpReconnectMatch) {

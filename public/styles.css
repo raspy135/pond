@@ -555,6 +555,12 @@ body {
   border-radius: 8px; padding: 8px 10px; font-size: .84rem; font-family: inherit; width: 100%;
 }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.browser-mode { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); display: grid; gap: 7px; }
+.browser-mode .radio-row { display: flex; gap: 8px; align-items: flex-start; font-size: .82rem; line-height: 1.45; cursor: pointer; }
+.browser-mode .radio-row input { margin-top: 3px; flex: none; }
+.browser-mode .br-token { display: grid; gap: 5px; }
+.browser-mode .br-token[hidden] { display: none; }
+.browser-mode .br-token input { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 8px 10px; font-size: .84rem; font-family: inherit; width: 100%; }
 .inline-row { display: flex; gap: 8px; }
 .section-sub { font-size: .74rem; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); font-weight: 600; margin-top: 6px; }
 .form-actions { display: flex; gap: 8px; margin-top: 6px; }

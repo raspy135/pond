@@ -2055,6 +2055,39 @@ function switchHubTab(tabName) {
   if (tabName === 'sentinel') loadFileRoot();
 }
 
+// ---------- Which browser the AI uses (Agent Hub → MCP & API → browser card) ----------
+const BRIDGE_URL = 'https://chromewebstore.google.com/detail/playwright-mcp-bridge/mmlmfjhmonkocbjadbfplnigmagldckm';
+function browserModeBox(s) {
+  const mode = (s.args || []).includes('--extension') ? 'chrome' : 'own';
+  const hasToken = Boolean(s.env?.PLAYWRIGHT_MCP_EXTENSION_TOKEN);
+  const box = document.createElement('div');
+  box.className = 'browser-mode';
+  box.innerHTML = `
+    <div class="card-text"><strong>Which browser</strong></div>
+    <label class="radio-row"><input type="radio" name="brMode" value="own" ${mode === 'own' ? 'checked' : ''}>
+      <span><strong>Pond's own window</strong> — a separate Chrome signed in to nothing. Many sites treat it as a bot and block it.</span></label>
+    <label class="radio-row"><input type="radio" name="brMode" value="chrome" ${mode === 'chrome' ? 'checked' : ''}>
+      <span><strong>Your Chrome</strong> — the Chrome you use every day on this computer, with your sign-ins, through the
+      <a href="${BRIDGE_URL}" target="_blank" rel="noopener">Playwright MCP Bridge</a> extension. Sites see your normal browser.
+      Pond can then act as you on sites you're signed in to; Sentinel approvals still apply. Chrome has to be running on this computer.</span></label>
+    <div class="br-token" ${mode === 'chrome' ? '' : 'hidden'}>
+      <div class="card-meta">Optional: paste the token shown in the extension, so Chrome doesn't ask you to allow each connection.</div>
+      <input type="password" class="input" placeholder="${hasToken ? 'Token saved — paste a new one to replace' : 'PLAYWRIGHT_MCP_EXTENSION_TOKEN'}" autocomplete="off">
+    </div>
+    <div class="btn-group"><button class="btn primary sm" data-act="brsave">Use this browser</button><span class="card-meta br-out"></span></div>`;
+  box.querySelectorAll('input[name="brMode"]').forEach((r) => { r.name = `brMode-${s.name}`; r.onchange = () => { box.querySelector('.br-token').hidden = r.value !== 'chrome' || !r.checked; }; });
+  box.querySelector('[data-act="brsave"]').onclick = async () => {
+    const pick = box.querySelector('input[type="radio"]:checked')?.value || 'own';
+    const tok = box.querySelector('.br-token input').value.trim();
+    box.querySelector('.br-out').textContent = 'Switching…';
+    const r = await fetch('/api/browser/mode', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: pick, ...(tok ? { token: tok } : {}) }) }).then((x) => x.json()).catch(() => ({}));
+    if (!r.ok) { box.querySelector('.br-out').textContent = 'Could not switch'; return; }
+    showToast(pick === 'chrome' ? 'The AI now browses in your Chrome' : "The AI now browses in Pond's own window");
+    loadHubData();
+  };
+  return box;
+}
+
 // ---------- File access folder (Agent Hub → Sentinel) ----------
 async function loadFileRoot() {
   const s = await fetch('/api/settings', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({}));
@@ -2317,6 +2350,7 @@ async function loadHubData() {
       await fetch(`/api/mcp/${s.name}/reconnect`, { method: 'POST' });
       loadHubData();
     };
+    if (s.name === 'browser' && (s.args || []).some((a) => String(a).includes('@playwright/mcp'))) c.appendChild(browserModeBox(s));
     c.querySelector('[data-act="del"]').onclick = async () => {
       await fetch(`/api/mcp/${s.name}`, { method: 'DELETE' });
       loadHubData();
