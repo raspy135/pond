@@ -1149,7 +1149,7 @@ async function refreshState() {
       const pct = Math.min(100, Math.round((s.sessionTokens / s.contextLength) * 100));
       const usedK = (s.sessionTokens / 1000).toFixed(1);
       const maxK = Math.round(s.contextLength / 1000);
-      $('#contextLine').textContent = `Context: ~${usedK}k / ${maxK}k (${pct}% · auto-compacts at 75%)`;
+      $('#contextLine').textContent = `Context: ~${usedK}k / ${maxK}k (${pct}% · auto-compacts at 80%)`;
     }
 
     const aggr = (s.proactive?.aggressiveness || 'high').toUpperCase();
