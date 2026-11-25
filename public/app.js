@@ -486,19 +486,31 @@ if (window.PondVoice?.sttSupported) {
   });
 }
 
-// Agent Hub → Appearance → Voice (this device only).
-function loadVoicePanel() {
+window.PondVoice?.setErrorHandler((msg) => showToast(msg));
+
+// Agent Hub → Appearance → Voice. Engine/voice/speed/auto-read are per device; the Google key is Pond-wide.
+async function loadVoicePanel() {
   const el = $('#hubVoice');
   const V = window.PondVoice;
   if (!el) return;
-  if (!V || (!V.ttsSupported && !V.sttSupported)) { el.innerHTML = '<div class="card-meta">This browser has no built-in speech.</div>'; return; }
+  if (!V) { el.innerHTML = '<div class="card-meta">Voice is not available.</div>'; return; }
+  await V.refreshServer();
   const s = V.settings;
+  const st = await fetch('/api/settings', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({}));
+  const gv = st.voice || {};
   const all = V.voices().slice().sort((a, b) => a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name));
   const opt = (v) => `<option value="${escapeHtml(v.voiceURI)}"${s.voice === v.voiceURI ? ' selected' : ''}>${escapeHtml(v.name)} — ${escapeHtml(v.lang)}${/natural/i.test(v.name) ? ' ★' : ''}</option>`;
   const langs = [['', `Browser language (${navigator.language || 'en-US'})`], ['ja-JP', '日本語 (ja-JP)'], ['en-US', 'English (en-US)'], ['en-GB', 'English (en-GB)']];
   el.innerHTML = `<div class="voice-card">
+    <label>Read replies with
+      <select data-k="engine">
+        <option value="auto"${s.engine === 'auto' ? ' selected' : ''}>Automatic — Google voices if set up below, else this device's voices</option>
+        <option value="browser"${s.engine === 'browser' ? ' selected' : ''}>This device's voices</option>
+        <option value="google"${s.engine === 'google' ? ' selected' : ''}${V.googleReady ? '' : ' disabled'}>Google Cloud voices${V.googleReady ? '' : ' (add a key below)'}</option>
+      </select>
+    </label>
     ${V.ttsSupported ? `
-    <label>Voice for reading replies
+    <label>Device voice (when not using Google)
       <select data-k="voice"><option value="">Automatic — best voice for each sentence's language${all.length ? '' : ' (loading voices…)'}</option>${all.map(opt).join('')}</select>
     </label>
     <label>Speed <span class="card-meta" data-out="rate">${Number(s.rate).toFixed(2)}×</span>
@@ -511,7 +523,42 @@ function loadVoicePanel() {
       <select data-k="sttLang">${langs.map(([v, t]) => `<option value="${v}"${(s.sttLang || '') === v ? ' selected' : ''}>${escapeHtml(t)}</option>`).join('')}</select>
     </label>
     <div class="card-meta">Use the 🎤 button next to the message box. Dictation uses the browser's online speech service (Microsoft's in Edge, Google's in Chrome, Apple's in Safari), so your voice leaves your network.</div>` : '<div class="card-meta">This browser has no built-in dictation — use your keyboard\'s voice input instead.</div>'}
+    <div class="section-sub" style="margin-top:6px">Google Cloud voices (all devices)</div>
+    <div class="card-meta">Natural voices from Google Cloud Text-to-Speech, much better than iPhone's built-in ones. Needs a Google Cloud API key with the Text-to-Speech API enabled (and billing on). Chirp 3 HD voices include 1 million free characters a month, then are billed per character. Reply text is sent to Google to be read.</div>
+    <label>API key <input type="password" class="gkey" autocomplete="off" placeholder="${gv.googleConfigured ? 'Key saved — paste a new one to replace, or clear it' : 'Google Cloud API key'}" value="${gv.googleConfigured ? '••••••••' : ''}"></label>
+    <label>Japanese voice <select class="gvoice" data-g="googleVoiceJa"><option>${escapeHtml(gv.googleVoiceJa || '')}</option></select></label>
+    <label>English voice <select class="gvoice" data-g="googleVoiceEn"><option>${escapeHtml(gv.googleVoiceEn || '')}</option></select></label>
+    <div class="row"><button class="btn primary sm" data-act="gsave">Save</button><button class="btn sm" data-act="gtest"${gv.googleConfigured ? '' : ' disabled'}>Test Google voice</button><span class="card-meta gout"></span></div>
   </div>`;
+  const gout = el.querySelector('.gout');
+  if (gv.googleConfigured) {
+    fetch('/api/tts/voices', { cache: 'no-store' }).then((r) => r.json()).then((d) => {
+      if (d.error) { gout.textContent = d.error; return; }
+      for (const sel of el.querySelectorAll('.gvoice')) {
+        const want = sel.dataset.g === 'googleVoiceJa' ? 'ja-JP' : 'en-';
+        const cur = gv[sel.dataset.g];
+        const list = (d.voices || []).filter((v) => v.lang.startsWith(want));
+        if (!list.length) continue;
+        sel.innerHTML = list.map((v) => `<option value="${escapeHtml(v.name)}"${v.name === cur ? ' selected' : ''}>${escapeHtml(v.name)}${v.gender ? ` · ${escapeHtml(v.gender.toLowerCase())}` : ''}</option>`).join('');
+      }
+    }).catch(() => {});
+  }
+  el.querySelector('[data-act="gsave"]').addEventListener('click', async () => {
+    const voice = { googleApiKey: el.querySelector('.gkey').value.trim() };
+    for (const sel of el.querySelectorAll('.gvoice')) if (sel.value) voice[sel.dataset.g] = sel.value;
+    gout.textContent = 'Saving…';
+    const r = await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ voice }) }).then((x) => x.json()).catch(() => ({ error: 'Could not save' }));
+    if (r.error) { gout.textContent = r.error; return; }
+    loadVoicePanel();
+  });
+  el.querySelector('[data-act="gtest"]').addEventListener('click', async () => {
+    gout.textContent = '';
+    const r = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'こんにちは、Pondです。', lang: 'ja' }) });
+    if (!r.ok) { gout.textContent = (await r.json().catch(() => ({}))).error || `HTTP ${r.status}`; return; }
+    const prev = s.engine;
+    s.engine = 'google';
+    V.speak("こんにちは、Pondです。 Hi, I'm Pond — this is how I'll read my replies.", { onEnd: () => { s.engine = prev; } });
+  });
   el.querySelectorAll('[data-k]').forEach((inp) => {
     inp.addEventListener(inp.type === 'range' ? 'input' : 'change', () => {
       const k = inp.dataset.k;

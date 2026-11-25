@@ -1,5 +1,5 @@
 // Pond service worker — app-shell caching, network-first for API, rich desktop/PWA notifications.
-const CACHE = 'pond-shell-v113';
+const CACHE = 'pond-shell-v114';
 const SHELL = ['/app/', '/index.html', '/styles.css', '/icons.js', '/app.js', '/manifest.webmanifest', '/icons/icon.svg', '/icons/icon-192.png', '/markdown.js', '/mascot.js', '/voice.js'];
 
 self.addEventListener('install', (event) => {

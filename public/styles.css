@@ -424,7 +424,7 @@ body {
 .voice-card { display: grid; gap: 10px; max-width: 560px; }
 .voice-card label { display: grid; gap: 4px; font-size: .84rem; }
 .voice-card select, .voice-card input[type=range] { width: 100%; }
-.voice-card select { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 7px 9px; font: inherit; font-size: .84rem; }
+.voice-card select, .voice-card input[type=password] { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 7px 9px; font: inherit; font-size: .84rem; }
 .voice-card .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .voice-card .check { display: flex; gap: 8px; align-items: center; grid-template-columns: none; }
 #attachBtn:hover { color: var(--accent); border-color: var(--accent); }

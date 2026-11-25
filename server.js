@@ -71,6 +71,7 @@ import {
 import { listArtifacts, getArtifact, deleteArtifact, registerSettingsReloadHook } from './lib/tools.js';
 import { playwrightEntry, EXTENSION_TOKEN_ENV } from './lib/browser-setup.js';
 import { handleAppRoute } from './lib/apps.js';
+import { synthesizeGoogle, listGoogleVoices, googleTtsConfigured } from './lib/tts.js';
 import { webSearch, activeSearchBackend } from './lib/web.js';
 import { detectPython, resolveRunFile } from './lib/python.js';
 import { ensureLlmConfig, getPublicLlmConfig, saveLlmConfig, resolveProfile, testLlmProfile, setActiveLlm, defaultChatLlm, normEffort } from './lib/llm-config.js';
@@ -1144,6 +1145,20 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'DELETE' && memDelMatch) {
       await updateJson('memory.json', [], (mem) => (Array.isArray(mem) ? mem : []).filter((m) => m.id !== memDelMatch[1]));
       return sendJson(res, 200, { ok: true });
+    }
+
+    // Reading aloud with Google Cloud Text-to-Speech (the key stays here; the app gets MP3).
+    if (req.method === 'GET' && pathname === '/api/tts/status') return sendJson(res, 200, { google: googleTtsConfigured() });
+    if (req.method === 'GET' && pathname === '/api/tts/voices') {
+      try { return sendJson(res, 200, await listGoogleVoices()); } catch (err) { return sendJson(res, 502, { error: String(err?.message || err) }); }
+    }
+    if (req.method === 'POST' && pathname === '/api/tts') {
+      const body = await readJsonBody(req);
+      try {
+        const audio = await synthesizeGoogle(body.text, { lang: body.lang });
+        res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Content-Length': audio.length, 'Cache-Control': 'no-store' });
+        return res.end(audio);
+      } catch (err) { return sendJson(res, 502, { error: String(err?.message || err) }); }
     }
 
     // Add a message to a reply that is still running: it reads it at its next step instead of being stopped.
