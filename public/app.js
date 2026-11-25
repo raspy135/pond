@@ -2700,7 +2700,7 @@ function addAgentCard(m) {
   const md = (t) => (window.renderMarkdown ? window.renderMarkdown(t) : escapeHtml(t));
   if (m.fromAgent === 'reports') {
     const list = m.reports || [];
-    card.innerHTML = `<div class="ac-head">${icon('sparkles', 12)}<span>Sub-agent report${list.length > 1 ? 's' : ''} came back</span></div>
+    card.innerHTML = `<div class="ac-head">${icon('sparkles', 12)}<span>Sub-agent report${list.length > 1 ? 's' : ''} came back${m.pending?.length ? ` · still working: ${escapeHtml(m.pending.join(', '))}` : ''}</span></div>
       <div class="ac-links"></div>
       <details><summary>Show the reports</summary><div class="ac-body msg-body"></div></details>`;
     for (const r of list) {
@@ -2711,7 +2711,7 @@ function addAgentCard(m) {
       b.onclick = () => switchSession(r.chat);
       card.querySelector('.ac-links').appendChild(b);
     }
-    const text = String(m.content || '').replace(/<\/?subagent_reports>/g, '').replace(/<report role="([^"]*)"[^>]*>/g, '\n**$1**\n\n').replace(/<\/report>/g, '').replace(/\n?The sub-agents? you started finished[\s\S]*$/, '').trim();
+    const text = String(m.content || '').replace(/<\/report>/g, '').replace(/<\/subagent_reports>[\s\S]*$/, '').replace(/<subagent_reports>/g, '').replace(/<report role="([^"]*)"[^>]*>/g, '\n**$1**\n\n').trim();
     card.querySelector('.ac-body').innerHTML = md(text);
   } else {
     card.innerHTML = `<div class="ac-head">${icon('sparkles', 12)}<span>Task from the main chat</span></div><div class="ac-body msg-body"></div>`;

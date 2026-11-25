@@ -76,7 +76,7 @@ import { listSkills, getSkill, deleteSkill } from './lib/skills.js';
 import { readHtml } from './lib/htmlcache.js';
 import { serveShare, ensureShareDir, preparePage, isEmbed } from './lib/share.js';
 import { startTurn, pushTurnEvent, endTurn, getRunningTurn, attachTurn, getRunningSessionIds, abortTurn } from './lib/turns.js';
-import { onSubagentReports, formatReports } from './lib/subagents.js';
+import { onSubagentReports, formatReports, stopSubagent } from './lib/subagents.js';
 import { loadPlugins, listPlugins, setPluginEnabled, savePluginSettings, reloadPlugins, handlePluginRoute, getPluginUiState, takeFooters, emitEvent } from './lib/plugins.js';
 import { getVapid, saveSubscription, removeSubscription, listSubscriptions, pushToAllDevices } from './lib/push.js';
 import { resolveSessionProfile, buildSystemPrompt, buildChatMessages, prepareSessionChatTurn, saveChatImages, compactSession, estimateSessionTokens, buildLiveContext, streamChat, runAgentTurn } from './lib/llm.js';
@@ -137,9 +137,10 @@ async function runBackgroundChatTurn(sessionId, text, extra = null) {
     endTurn(turn, ctrl.signal.aborted ? 'stopped' : 'done');
   }
 }
-onSubagentReports((parentId, reports) => runBackgroundChatTurn(parentId, formatReports(reports), {
+onSubagentReports((parentId, reports, pending) => runBackgroundChatTurn(parentId, formatReports(reports, pending), {
   fromAgent: 'reports',
   reports: reports.map((r) => ({ role: r.role, status: r.status, chat: r.sessionId })),
+  ...(pending.length ? { pending } : {}),
 }));
 
 // ---------- HTTP helpers ----------
@@ -1061,6 +1062,7 @@ const server = http.createServer(async (req, res) => {
       const id = sessionMatch[1];
       const idx = await loadSessionsIndex();
       if (!idx.sessions.find((x) => x.id === id)) return sendJson(res, 404, { error: 'Session not found' });
+      stopSubagent(id); // a sub-agent's chat: stop it too, so its main chat isn't left waiting
       idx.sessions = idx.sessions.filter((x) => x.id !== id);
       if (Array.isArray(idx.pinned)) idx.pinned = idx.pinned.filter((x) => x !== id);
       try { await rm(sessionFile(id), { force: true }); } catch { /* ignore */ }
